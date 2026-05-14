@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets & env
+.env
+*.token
+*.key
+
+# Temp
+*.log
+tmp/
