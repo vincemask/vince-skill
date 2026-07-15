@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "document_language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "window_hours": 72,
+  "include_older_items": true,
+  "request_timeout_seconds": 5,
+  "request_retries": 0,
+  "cache_max_age_hours": 24,
+  "reddit": {"enabled": true, "subreddits": ["MachineLearning"], "sort": "hot", "time": "week", "limit_per_subreddit": 10},
+  "x": {"enabled": true, "accounts": ["OpenAI"], "batch_size": 1, "limit_per_batch": 10, "top_by_engagement": 10, "exclude_replies": true, "exclude_retweets": true},
+  "github": {"enabled": true, "queries": ["created:>={since_date} topic:llm"], "limit_per_query": 10},
+  "ranking": {"source_weights": {"reddit": 1.0, "x": 1.0, "github": 1.0}, "cross_source_bonus": 8.0, "cluster_similarity": 0.4, "report_topic_count": 10},
+  "drafts": {"language": "zh-CN", "count": 3, "max_characters": 280},
+  "obsidian": {
+    "enabled": true,
+    "vault": "wiki",
+    "target_directory": "raw",
+    "strict": true,
+    "index_path": "index.md",
+    "log_path": "log.md"
+  }
+}

@@ -22,3 +22,6 @@ venv/
 # Temp
 *.log
 tmp/
+
+# Local agent learnings
+.learnings/

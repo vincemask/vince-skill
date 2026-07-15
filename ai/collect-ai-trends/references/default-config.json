@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "document_language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "window_hours": 72,
+  "include_older_items": false,
+  "request_timeout_seconds": 45,
+  "request_retries": 1,
+  "cache_max_age_hours": 24,
+  "reddit": {
+    "enabled": true,
+    "subreddits": [
+      "LocalLLaMA",
+      "MachineLearning",
+      "artificial",
+      "ChatGPT"
+    ],
+    "sort": "hot",
+    "time": "week",
+    "limit_per_subreddit": 20
+  },
+  "x": {
+    "enabled": true,
+    "accounts": [
+      "OpenAI",
+      "AnthropicAI",
+      "GoogleDeepMind",
+      "MetaAI",
+      "huggingface",
+      "NVIDIAAI",
+      "MistralAI",
+      "karpathy",
+      "AndrewYNg"
+    ],
+    "batch_size": 3,
+    "limit_per_batch": 30,
+    "top_by_engagement": 20,
+    "exclude_replies": true,
+    "exclude_retweets": true
+  },
+  "github": {
+    "enabled": true,
+    "queries": [
+      "created:>={since_date} topic:llm",
+      "created:>={since_date} topic:artificial-intelligence",
+      "created:>={since_date} topic:machine-learning",
+      "pushed:>={since_date} topic:generative-ai stars:>500"
+    ],
+    "limit_per_query": 20
+  },
+  "ranking": {
+    "source_weights": {
+      "reddit": 1.0,
+      "x": 1.0,
+      "github": 1.0
+    },
+    "cross_source_bonus": 8.0,
+    "cluster_similarity": 0.52,
+    "report_topic_count": 15
+  },
+  "drafts": {
+    "language": "zh-CN",
+    "count": 5,
+    "max_characters": 280
+  },
+  "obsidian": {
+    "enabled": true,
+    "vault": "wiki",
+    "target_directory": "raw",
+    "strict": true,
+    "index_path": "index.md",
+    "log_path": "log.md"
+  }
+}
