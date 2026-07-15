@@ -1,0 +1,7 @@
+interface:
+  display_name: "Example Skill"
+  short_description: "展示可复制的最小 Codex Skill 结构与工作流"
+  default_prompt: "Use $example-skill to demonstrate this repository's recommended Skill workflow."
+
+policy:
+  allow_implicit_invocation: false
