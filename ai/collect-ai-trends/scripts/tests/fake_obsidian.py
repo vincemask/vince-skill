@@ -70,7 +70,7 @@ def main() -> int:
             return fail(f'Error: File "{relative}" not found.', 0)
         content = target.read_text(encoding="utf-8")
         if mode == "read-mismatch" and target.name.startswith("trend-"):
-            content = content.replace("## 中文 X 草稿", "## 草稿内容已损坏")
+            content = content.replace("**X 成稿：**", "**成稿内容已损坏：**")
         sys.stdout.write(content)
         return 0
     if command == "create":
