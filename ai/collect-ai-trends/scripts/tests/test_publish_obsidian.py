@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fixture_helpers import finalize_run, write_editorial
+
 
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = TEST_DIR.parent
@@ -36,6 +38,9 @@ class PublisherIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(collection.returncode, 0, collection.stderr)
         self.run_dir = self.output / RUN_ID
+        write_editorial(self.run_dir)
+        finalization = finalize_run(self.run_dir)
+        self.assertEqual(finalization.returncode, 0, finalization.stderr)
         self.plan_path = self.run_dir / "obsidian-publish.json"
         self.plan = json.loads(self.plan_path.read_text(encoding="utf-8"))
         self.fake_root = self.root / "fake-vaults"

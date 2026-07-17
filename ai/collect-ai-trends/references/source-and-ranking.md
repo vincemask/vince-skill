@@ -18,6 +18,8 @@ For each source, calculate a raw engagement value:
 
 Convert raw engagement to a percentile within that source, combine it with an exponential recency score, and apply the configured source weight. Add a bounded bonus when a topic cluster contains independent signals from more than one source.
 
+Keep at most the top 10 URL-backed clusters for editorial work. If fewer than 10 clusters have usable evidence, preserve the smaller count instead of padding the list with weak signals.
+
 Do not compare raw likes, Reddit scores, and GitHub stars directly. Their scales and collection semantics differ.
 
 ## Deduplication and clustering

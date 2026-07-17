@@ -44,18 +44,6 @@ STATUS_ZH = {
     "cached": "缓存",
     "disabled": "未启用",
 }
-SOURCE_ZH = {"reddit": "Reddit", "x": "X", "github": "GitHub"}
-METRIC_ZH = {
-    "score": "赞同数",
-    "comments": "评论数",
-    "likes": "点赞数",
-    "retweets": "转发数",
-    "replies": "回复数",
-    "views": "浏览数",
-    "stars": "星标数",
-    "forks": "复刻数",
-    "open_issues": "未关闭问题数",
-}
 
 
 def utc_now() -> datetime:
@@ -145,10 +133,22 @@ def validate_config(config: dict[str, Any]) -> None:
     drafts = config.get("drafts", {})
     if drafts.get("language") != "zh-CN":
         raise ValueError("config.drafts.language must be zh-CN")
-    if not 1 <= int(drafts.get("count", 0)) <= 20:
-        raise ValueError("config.drafts.count must be between 1 and 20")
-    if not 100 <= int(drafts.get("max_characters", 0)) <= 280:
-        raise ValueError("config.drafts.max_characters must be between 100 and 280")
+    if int(config.get("ranking", {}).get("report_topic_count", 0)) != 10:
+        raise ValueError("config.ranking.report_topic_count must be 10")
+    if int(drafts.get("count", 0)) != 10:
+        raise ValueError("config.drafts.count must be 10")
+    if drafts.get("mode") != "long":
+        raise ValueError("config.drafts.mode must be long")
+    minimum = int(drafts.get("min_prose_characters", 0))
+    maximum = int(drafts.get("max_prose_characters", 0))
+    if not 1 <= minimum <= maximum <= 500:
+        raise ValueError("config.drafts prose character limits are invalid")
+    reason_minimum = int(drafts.get("min_recommendation_characters", 0))
+    reason_maximum = int(drafts.get("max_recommendation_characters", 0))
+    if not 1 <= reason_minimum <= reason_maximum <= 100:
+        raise ValueError("config.drafts recommendation character limits are invalid")
+    if int(drafts.get("max_hashtags", -1)) != 1:
+        raise ValueError("config.drafts.max_hashtags must be 1")
     try:
         ZoneInfo(str(config.get("timezone", "Asia/Shanghai")))
     except ZoneInfoNotFoundError as exc:
@@ -512,7 +512,8 @@ def cluster_items(items: list[dict[str, Any]], config: dict[str, Any]) -> list[d
             "items": cluster_items_list,
         })
     topics.sort(key=lambda value: (-value["score"], value["id"]))
-    limit = int(config["ranking"].get("report_topic_count", 15))
+    topics = [topic for topic in topics if any(item.get("url") for item in topic["items"])]
+    limit = int(config["ranking"].get("report_topic_count", 10))
     return topics[:limit]
 
 
@@ -643,337 +644,80 @@ def build_health(source_runs: list[dict[str, Any]], item_count: int) -> dict[str
     }
 
 
-def compact_title(value: str, limit: int = 150) -> str:
-    text = re.sub(r"\s+", " ", value).strip()
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
-def build_drafts(topics: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
-    draft_config = config["drafts"]
-    max_chars = int(draft_config.get("max_characters", 280))
-    language = str(draft_config.get("language", "zh-CN"))
-    output = []
-    for index, topic in enumerate(topics[: int(draft_config.get("count", 5))], start=1):
-        lead = next((item for item in topic["items"] if item.get("url")), topic["items"][0])
-        url = lead.get("url", "")
-        source_label = "、".join(SOURCE_ZH.get(source, source) for source in topic["sources"])
-        if language.lower().startswith("zh"):
-            prefix = (
-                f"AI 热点观察 #{index}：检测到来自 {source_label} 的共同信号，综合热度 {topic['score']:.0f}。"
-                "建议先核对原始信息，再判断它解决了什么问题、影响哪些用户，以及是否具备可复现证据。"
-            )
-        else:
-            raise ValueError("draft language must be zh-CN")
-        separator = "\n" if url else ""
-        allowed_prefix = max_chars - len(separator) - len(url)
-        if len(prefix) > allowed_prefix:
-            prefix = prefix[: max(0, allowed_prefix - 1)].rstrip() + "…"
-        text = prefix + separator + url
-        sources = [
-            {"source": item["source"], "url": item["url"], "title": compact_title(item["title"], 180)}
-            for item in topic["items"] if item.get("url")
-        ]
-        output.append({
-            "id": f"draft-{index:02d}",
-            "topic_id": topic["id"],
-            "text": text,
-            "character_count": len(text),
-            "sources": sources,
-        })
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "language": language,
-        "max_characters": max_chars,
-        "drafts": output,
-    }
-
-
-def metric_text(item: dict[str, Any]) -> str:
-    metrics = item.get("metrics", {})
-    parts = []
-    for key, value in metrics.items():
-        if value:
-            label = METRIC_ZH.get(key, key)
-            parts.append(f"{label}={int(value) if float(value).is_integer() else value}")
-    return "，".join(parts) or "暂无互动指标"
-
-
-def md_escape(value: Any) -> str:
-    return str(value or "").replace("|", "\\|").replace("\n", " ")
-
-
-def render_report(report: dict[str, Any]) -> str:
-    run = report["run"]
-    health = report["health"]
-    lines = [
-        "# AI 趋势采集报告",
-        "",
-        f"- 运行编号：`{run['id']}`",
-        f"- 生成时间：`{run['generated_at']}`",
-        f"- 采集时间窗：`{run['window_start']}` → `{run['window_end']}`",
-        f"- 整体状态：**{STATUS_ZH.get(health['status'], health['status'])}**",
-        f"- 标准化信号数：**{health['item_count']}**",
-        "",
-        "## 来源状态",
-        "",
-        "| 来源 | 状态 | 请求数 | 最新 | 缓存 | 失败 |",
-        "| --- | --- | ---: | ---: | ---: | ---: |",
-    ]
-    for source in SOURCE_NAMES:
-        info = health["sources"][source]
-        source_label = SOURCE_ZH.get(source, source)
-        status_label = STATUS_ZH.get(info["status"], info["status"])
-        lines.append(f"| {source_label} | {status_label} | {info['requests']} | {info['fresh']} | {info['cached']} | {info['failed']} |")
-    lines.extend(["", "## 热点话题", ""])
-    if not report["topics"]:
-        lines.append("未采集到有依据的话题。请检查来源状态和请求诊断，不要生成无来源草稿。")
-    for index, topic in enumerate(report["topics"], start=1):
-        lines.extend([
-            f"### {index}. 热点主题",
-            "",
-            f"综合热度：**{topic['score']}** · 来源：`{'、'.join(SOURCE_ZH.get(source, source) for source in topic['sources'])}` · 跨来源印证：`{'是' if topic['cross_source'] else '否'}`",
-            "",
-            f"原始主标题：{md_escape(topic['title'])}",
-            "",
-        ])
+def select_editorial_evidence(topic: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    seen_sources: set[str] = set()
+    for item in topic["items"]:
+        if item["source"] in seen_sources or not item.get("url"):
+            continue
+        selected.append(item)
+        seen_sources.add(item["source"])
+        if len(selected) == limit:
+            break
+    if len(selected) < limit:
+        selected_ids = {item["id"] for item in selected}
         for item in topic["items"]:
-            label = md_escape(compact_title(item["title"], 170))
-            link = f"[{label}]({item['url']})" if item.get("url") else label
-            source_label = SOURCE_ZH.get(item["source"], item["source"])
-            lines.append(f"- **{source_label}** · {link} · {metric_text(item)} · {item.get('published_at') or '时间未知'}")
-        lines.append("")
-    lines.extend(["## 采集诊断", ""])
-    for record in report["source_runs"]:
-        detail = f" · 缓存年龄 {record['cache_age_hours']} 小时" if "cache_age_hours" in record else ""
-        error = f" · `{md_escape(record['error'])}`" if record.get("error") else ""
-        source_label = SOURCE_ZH.get(record["source"], record["source"])
-        status_label = STATUS_ZH.get(record["status"], record["status"])
-        lines.append(f"- `{source_label}` / `{md_escape(record['request_id'])}`：**{status_label}**（{record['item_count']} 条）{detail}{error}")
-    lines.extend(["", "## 局限说明", ""])
-    lines.extend(f"- {value}" for value in report["limitations"])
-    lines.extend(["", "X 草稿位于 `x-drafts.md`。修改结构化草稿后，请使用 `validate_x_drafts.py` 校验。", ""])
-    return "\n".join(lines)
+            if item["id"] in selected_ids or not item.get("url"):
+                continue
+            selected.append(item)
+            if len(selected) == limit:
+                break
+    return selected
 
 
-def render_drafts(payload: dict[str, Any]) -> str:
-    lines = [
-        "# X 话题草稿",
-        "",
-        f"语言：`简体中文` · 单条上限：`{payload['max_characters']}` 字",
-        "",
-        "草稿基于采集标题和原始链接自动生成。发布前应人工复核原文、语气和时效。",
-        "",
-    ]
-    for index, draft in enumerate(payload["drafts"], start=1):
-        lines.extend([
-            f"## 草稿 {index:02d}（{draft['character_count']} 字）",
-            "",
-            "```text",
-            draft["text"],
-            "```",
-            "",
-            "证据来源：",
-            "",
-        ])
-        lines.extend(
-            f"- [{SOURCE_ZH.get(source['source'], source['source'])}：{md_escape(source['title'])}]({source['url']})"
-            for source in draft["sources"]
-        )
-        lines.append("")
-    return "\n".join(lines)
+def build_editorial_input(
+    report: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    topics = []
+    for rank, topic in enumerate(report["topics"], start=1):
+        evidence = select_editorial_evidence(topic)
+        topics.append({
+            "rank": rank,
+            "topic_id": topic["id"],
+            "original_title": topic["title"],
+            "score": topic["score"],
+            "sources": topic["sources"],
+            "cross_source": topic["cross_source"],
+            "evidence": [
+                {
+                    "source": item["source"],
+                    "title": item["title"],
+                    "summary": item.get("summary", ""),
+                    "url": item["url"],
+                    "published_at": item.get("published_at"),
+                    "author": item.get("author", ""),
+                    "channel": item.get("channel", ""),
+                    "metrics": item.get("metrics", {}),
+                    "score": item.get("score"),
+                }
+                for item in evidence
+            ],
+        })
+    drafts = config["drafts"]
+    return {
+        "schema_version": 1,
+        "run_id": report["run"]["id"],
+        "language": "zh-CN",
+        "health": report["health"]["status"],
+        "topic_limit": 10,
+        "required_topic_count": len(topics),
+        "post_policy": {
+            "mode": drafts["mode"],
+            "min_prose_characters": int(drafts["min_prose_characters"]),
+            "max_prose_characters": int(drafts["max_prose_characters"]),
+            "min_recommendation_characters": int(drafts["min_recommendation_characters"]),
+            "max_recommendation_characters": int(drafts["max_recommendation_characters"]),
+            "max_hashtags": int(drafts["max_hashtags"]),
+            "primary_url_count": 1,
+            "style": "professional-concise",
+        },
+        "topics": topics,
+    }
 
 
 def yaml_quote(value: Any) -> str:
     return json.dumps(str(value), ensure_ascii=False)
-
-
-def render_obsidian_note(
-    report: dict[str, Any],
-    drafts: dict[str, Any],
-    local_now: datetime,
-) -> str:
-    run = report["run"]
-    health = report["health"]
-    sources = sorted({
-        item["url"]
-        for source_items in report["items"].values()
-        for item in source_items
-        if item.get("url")
-    })
-    title = f"AI 趋势采集报告 {local_now.strftime('%Y-%m-%d %H:%M')}"
-    lines = [
-        "---",
-        f"title: {yaml_quote(title)}",
-        f"created: {local_now.date().isoformat()}",
-        f"updated: {local_now.date().isoformat()}",
-        "type: summary",
-        "tags:",
-        "  - ai",
-        "  - monitoring",
-        "  - news",
-        "  - x",
-        "  - github",
-    ]
-    if sources:
-        lines.append("sources:")
-        lines.extend(f"  - {yaml_quote(url)}" for url in sources)
-    else:
-        lines.append("sources: []")
-    lines.extend([
-        f"run_id: {yaml_quote(run['id'])}",
-        f"health: {health['status']}",
-        f"window_start: {yaml_quote(run['window_start'])}",
-        f"window_end: {yaml_quote(run['window_end'])}",
-        f"signal_count: {health['item_count']}",
-        f"topic_count: {len(report['topics'])}",
-        f"draft_count: {len(drafts['drafts'])}",
-        "---",
-        "",
-        "[[concepts/news-monitoring-and-growth]]",
-        "",
-        f"# {title}",
-        "",
-        "> [!info] 采集概况",
-        f"> - 运行编号：`{run['id']}`",
-        f"> - 状态：**{STATUS_ZH.get(health['status'], health['status'])}**",
-        f"> - 时间窗：`{run['window_start']}` → `{run['window_end']}`",
-        f"> - 信号 / 热点 / 草稿：**{health['item_count']} / {len(report['topics'])} / {len(drafts['drafts'])}**",
-    ])
-    if health["status"] != "complete":
-        lines.extend([
-            ">",
-            "> [!warning] 数据不完整",
-            "> 本次结果包含失败或缓存来源，请结合下方采集诊断审阅，不要把缺失来源解释为没有讨论。",
-        ])
-
-    lines.extend(["", "## 热点话题与跨来源证据", ""])
-    if not report["topics"]:
-        lines.append("未采集到有依据的话题。本页仅保留来源状态和失败诊断。")
-    for index, topic in enumerate(report["topics"], start=1):
-        lines.extend([
-            f"### {index}. 热点主题",
-            "",
-            f"综合热度：**{topic['score']}** · 来源：`{'、'.join(SOURCE_ZH.get(source, source) for source in topic['sources'])}` · 跨来源印证：`{'是' if topic['cross_source'] else '否'}`",
-            "",
-            f"原始主标题：{md_escape(topic['title'])}",
-            "",
-        ])
-        for item in topic["items"]:
-            label = md_escape(compact_title(item["title"], 170))
-            link = f"[{label}]({item['url']})" if item.get("url") else label
-            source_label = SOURCE_ZH.get(item["source"], item["source"])
-            lines.append(f"- **{source_label}** · {link} · {metric_text(item)} · {item.get('published_at') or '时间未知'}")
-        lines.append("")
-
-    lines.extend([
-        "## 中文 X 草稿",
-        "",
-        "以下内容仅为待人工复核的中文草稿，不会自动发布到 X。",
-        "",
-    ])
-    if not drafts["drafts"]:
-        lines.append("没有足够证据生成草稿。")
-        lines.append("")
-    for index, draft in enumerate(drafts["drafts"], start=1):
-        lines.extend([
-            f"### 草稿 {index:02d}（{draft['character_count']} 字）",
-            "",
-            "```text",
-            draft["text"],
-            "```",
-            "",
-            "证据来源：",
-            "",
-        ])
-        lines.extend(
-            f"- [{SOURCE_ZH.get(source['source'], source['source'])}：{md_escape(source['title'])}]({source['url']})"
-            for source in draft["sources"]
-        )
-        lines.append("")
-
-    lines.extend(["## 采集诊断与局限说明", "", "### 来源状态", ""])
-    lines.extend([
-        "| 来源 | 状态 | 请求数 | 最新 | 缓存 | 失败 |",
-        "| --- | --- | ---: | ---: | ---: | ---: |",
-    ])
-    for source in SOURCE_NAMES:
-        info = health["sources"][source]
-        lines.append(
-            f"| {SOURCE_ZH.get(source, source)} | {STATUS_ZH.get(info['status'], info['status'])} | "
-            f"{info['requests']} | {info['fresh']} | {info['cached']} | {info['failed']} |"
-        )
-    lines.extend(["", "### 请求诊断", ""])
-    for record in report["source_runs"]:
-        detail = f" · 缓存年龄 {record['cache_age_hours']} 小时" if "cache_age_hours" in record else ""
-        error = f" · `{md_escape(record['error'])}`" if record.get("error") else ""
-        lines.append(
-            f"- `{SOURCE_ZH.get(record['source'], record['source'])}` / `{md_escape(record['request_id'])}`："
-            f"**{STATUS_ZH.get(record['status'], record['status'])}**（{record['item_count']} 条）{detail}{error}"
-        )
-    lines.extend(["", "### 局限说明", ""])
-    lines.extend(f"- {value}" for value in report["limitations"])
-    lines.append("")
-    return "\n".join(lines)
-
-
-def build_obsidian_artifacts(
-    config: dict[str, Any],
-    report: dict[str, Any],
-    drafts: dict[str, Any],
-    run_dir: Path,
-    now: datetime,
-) -> tuple[str, dict[str, Any]]:
-    obsidian = config["obsidian"]
-    local_now = now.astimezone(ZoneInfo(str(config.get("timezone", "Asia/Shanghai"))))
-    filename = f"trend-{local_now.strftime('%Y-%m-%d-%H%M%S')}.md"
-    target_directory = validate_relative_vault_path(
-        obsidian["target_directory"], "config.obsidian.target_directory", directory=True
-    )
-    note_path = f"{target_directory}/{filename}"
-    wikilink = f"[[{note_path.removesuffix('.md')}]]"
-    note = render_obsidian_note(report, drafts, local_now)
-    signal_count = int(report["health"]["item_count"])
-    topic_count = len(report["topics"])
-    draft_count = len(drafts["drafts"])
-    run_id = report["run"]["id"]
-    index_entry = (
-        f"- {wikilink} — AI 趋势采集：{topic_count} 个热点，包含 Reddit、GitHub、X，并附 X 草稿。"
-    )
-    log_marker = f"ai-trend-run:{run_id}"
-    log_entry = (
-        f"- {local_now.strftime('%Y-%m-%d %H:%M:%S')} | run_id={run_id} | path={wikilink} | "
-        f"signals={signal_count} | topics={topic_count} | drafts={draft_count} | status=published "
-        f"<!-- {log_marker} -->"
-    )
-    plan = {
-        "schema_version": 1,
-        "run_id": run_id,
-        "vault": validate_vault_name(obsidian["vault"]),
-        "target_directory": target_directory,
-        "note_path": note_path,
-        "note_wikilink": wikilink,
-        "note_file": str((run_dir / "obsidian-note.md").resolve()),
-        "note_sha256": hashlib.sha256(note.encode("utf-8")).hexdigest(),
-        "index_path": validate_relative_vault_path(obsidian["index_path"], "config.obsidian.index_path"),
-        "log_path": validate_relative_vault_path(obsidian["log_path"], "config.obsidian.log_path"),
-        "strict": bool(obsidian["strict"]),
-        "created_date": local_now.date().isoformat(),
-        "signal_count": signal_count,
-        "topic_count": topic_count,
-        "draft_count": draft_count,
-        "index_entry": index_entry,
-        "log_entry": log_entry,
-        "log_marker": log_marker,
-        "required_note_markers": [
-            f"run_id: {yaml_quote(run_id)}",
-            "[[concepts/news-monitoring-and-growth]]",
-            "## 热点话题与跨来源证据",
-            "## 中文 X 草稿",
-            "## 采集诊断与局限说明",
-        ],
-        "result_file": str((run_dir / "obsidian-publish-result.json").resolve()),
-    }
-    return note, plan
 
 
 def command_check(
@@ -1004,37 +748,6 @@ def run_preflight() -> int:
     payload = {"status": "ok" if all(check["status"] == "ok" for check in checks) else "failed", "checks": checks}
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if payload["status"] == "ok" else 2
-
-
-def copy_latest(
-    output_root: Path,
-    run_dir: Path,
-    report: dict[str, Any],
-    drafts: dict[str, Any],
-    obsidian_plan: dict[str, Any],
-) -> None:
-    mapping = {
-        "latest-report.json": json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        "latest-report.md": (run_dir / "report.md").read_text(encoding="utf-8"),
-        "latest-drafts.json": json.dumps(drafts, ensure_ascii=False, indent=2) + "\n",
-        "latest-x-drafts.md": (run_dir / "x-drafts.md").read_text(encoding="utf-8"),
-        "latest-obsidian-note.md": (run_dir / "obsidian-note.md").read_text(encoding="utf-8"),
-        "latest-obsidian-publish.json": json.dumps(obsidian_plan, ensure_ascii=False, indent=2) + "\n",
-    }
-    for name, content in mapping.items():
-        atomic_write(output_root / name, content)
-    write_json(output_root / "latest.json", {
-        "schema_version": SCHEMA_VERSION,
-        "run_id": report["run"]["id"],
-        "run_dir": str(run_dir.resolve()),
-        "generated_at": report["run"]["generated_at"],
-        "health": report["health"],
-        "obsidian": {
-            "vault": obsidian_plan["vault"],
-            "note_path": obsidian_plan["note_path"],
-            "publish_plan": str((run_dir / "obsidian-publish.json").resolve()),
-        },
-    })
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1122,16 +835,15 @@ def main() -> int:
             "items": normalized,
             "limitations": limitations,
         }
-        drafts = build_drafts(topics, config)
-        obsidian_note, obsidian_plan = build_obsidian_artifacts(config, report, drafts, run_dir, now)
+        editorial_input = build_editorial_input(report, config)
         manifest = {
             "schema_version": SCHEMA_VERSION,
             "run_id": run_id,
             "generated_at": iso_z(now),
             "health_status": health["status"],
+            "stage": "collected",
             "files": [
-                "report.json", "report.md", "drafts.json", "x-drafts.md",
-                "obsidian-note.md", "obsidian-publish.json",
+                "report.json", "editorial-input.json", "run-config.json",
                 "raw/reddit.json", "raw/x.json", "raw/github.json",
             ],
         }
@@ -1140,13 +852,18 @@ def main() -> int:
             write_json(temp_dir / "raw" / f"{source}.json", raw_rows[source])
         write_json(temp_dir / "manifest.json", manifest)
         write_json(temp_dir / "report.json", report)
-        atomic_write(temp_dir / "report.md", render_report(report))
-        write_json(temp_dir / "drafts.json", drafts)
-        atomic_write(temp_dir / "x-drafts.md", render_drafts(drafts))
-        atomic_write(temp_dir / "obsidian-note.md", obsidian_note)
-        write_json(temp_dir / "obsidian-publish.json", obsidian_plan)
+        write_json(temp_dir / "editorial-input.json", editorial_input)
+        write_json(temp_dir / "run-config.json", config)
         os.replace(temp_dir, run_dir)
-        copy_latest(output_root, run_dir, report, drafts, obsidian_plan)
+        write_json(output_root / "latest-collection.json", {
+            "schema_version": SCHEMA_VERSION,
+            "run_id": run_id,
+            "run_dir": str(run_dir.resolve()),
+            "generated_at": report["run"]["generated_at"],
+            "health": health,
+            "editorial_input": str((run_dir / "editorial-input.json").resolve()),
+            "editorial_output": str((run_dir / "editorial.json").resolve()),
+        })
     except Exception as exc:
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
@@ -1156,11 +873,10 @@ def main() -> int:
     result = {
         "run_id": run_id,
         "health": health["status"],
-        "report": str((run_dir / "report.md").resolve()),
-        "drafts": str((run_dir / "x-drafts.md").resolve()),
-        "obsidian_note": str((run_dir / "obsidian-note.md").resolve()),
-        "obsidian_publish_plan": str((run_dir / "obsidian-publish.json").resolve()),
-        "obsidian_target": f"{obsidian_plan['vault']}:{obsidian_plan['note_path']}",
+        "run_dir": str(run_dir.resolve()),
+        "editorial_input": str((run_dir / "editorial-input.json").resolve()),
+        "editorial_output": str((run_dir / "editorial.json").resolve()),
+        "needs_editorial": True,
     }
     print(json.dumps(result, ensure_ascii=False))
     if args.strict and health["status"] != "complete":

@@ -56,12 +56,17 @@
     },
     "cross_source_bonus": 8.0,
     "cluster_similarity": 0.52,
-    "report_topic_count": 15
+    "report_topic_count": 10
   },
   "drafts": {
     "language": "zh-CN",
-    "count": 5,
-    "max_characters": 280
+    "count": 10,
+    "mode": "long",
+    "min_prose_characters": 120,
+    "max_prose_characters": 180,
+    "min_recommendation_characters": 20,
+    "max_recommendation_characters": 50,
+    "max_hashtags": 1
   },
   "obsidian": {
     "enabled": true,

@@ -1,111 +1,122 @@
 ---
 name: collect-ai-trends
-description: 通过 opencli 和 gh CLI 稳定采集 Reddit、GitHub 与知名 X 账号的最新 AI 话题，生成带来源的中文趋势报告和中文 X 草稿，并通过 Obsidian CLI 强制发布到指定 Vault。适用于 AI 趋势监控、每日或每周 AI 情报报告、跨来源热点聚合、X 选题草拟以及将采集产物归档到 Obsidian。
+description: 通过 opencli 和 gh CLI 采集 Reddit、GitHub 与知名 X 账号的最新 AI 话题，由 Codex 基于证据撰写最多 10 条中文 X 长帖与推荐理由，校验后通过 Obsidian CLI 归档。适用于 AI 趋势监控、每日或每周选题、中文 X 内容策划、跨来源热点筛选和 Obsidian 情报归档。
 ---
 
-# AI 趋势采集与 Obsidian 发布
+# AI 趋势采集与 X 成稿
 
-使用随 Skill 提供的脚本执行完整工作流，不要临时拼接采集管道。所有面向用户的报告、说明和 X 草稿使用简体中文；原始 URL、产品名、账号名和原始标题可以保留原文。
+执行“采集 → 编辑 → 终稿 → Obsidian 发布”四个阶段。不要跳过编辑或终稿校验，也不要把采集器的机器诊断直接复制给用户。
 
-将包含本文件的安装目录解析为 `<skill-dir>`。始终用绝对路径调用脚本，使工作流不依赖当前工作目录。
+将本文件所在目录解析为 `<skill-dir>`，始终使用脚本绝对路径。
 
-## 强制工作流
+## 1. 采集证据
 
-1. 首次运行、认证变化或采集失败后，先检查 opencli 和 gh：
-
-   ```bash
-   python3 <skill-dir>/scripts/collect_ai_trends.py --preflight
-   ```
-
-2. 运行采集器。默认配置固定使用 Obsidian Vault `wiki` 和既有目录 `raw/`：
-
-   ```bash
-   python3 <skill-dir>/scripts/collect_ai_trends.py \
-     --output-dir /absolute/path/to/ai-trend-output
-   ```
-
-3. 从采集器标准输出读取 `obsidian_publish_plan`，或读取 `<run-dir>/obsidian-publish.json`。只要发布计划已经生成，即使采集器因 `partial`、`failed` 或 `--strict` 返回非零状态，也要继续执行 Obsidian 发布，以保留诊断记录。
-
-4. 运行确定性发布脚本：
-
-   ```bash
-   python3 <skill-dir>/scripts/publish_obsidian.py \
-     /absolute/path/to/<run-dir>/obsidian-publish.json
-   ```
-
-5. 回读 `<run-dir>/obsidian-publish-result.json`。只有当 `status` 为 `published` 且发布脚本返回 0 时，才可以把本次工作流报告为成功。向用户交付 Obsidian wikilink、健康状态、热点数、草稿数和本地运行目录。
-
-Obsidian 发布是强制步骤。不得只生成本地报告后宣告完成，也不得在发布失败时静默降级。
-
-## Obsidian 规则
-
-- 默认 Vault：`wiki`。
-- 默认目标目录：`raw`。该目录必须已存在；禁止创建任何 Vault 目录。
-- 每次运行只发布一篇合并笔记，路径为 `raw/trend-YYYY-MM-DD-HHMMSS.md`，时间使用 `Asia/Shanghai`。
-- JSON、缓存和原始响应只保留在本地运行目录，不放入 Vault。
-- 对趋势笔记、`index.md`、`log.md` 的检查、创建、覆盖、追加和回读必须全部通过 Obsidian CLI。严禁用 Python、Shell 或文件系统 API 直接读写 Vault。
-- 发布脚本先验证目标目录、`index.md` 和 `log.md`，再创建或复用同一 `run_id` 的笔记；随后补全索引与日志，最后回读三处内容。
-- 不做自动回滚。中途失败时保留已完成步骤；使用同一份 `obsidian-publish.json` 重试，脚本会依据 `run_id`、wikilink 和日志标记继续补全，不重复创建或计数。
-- 如果目标路径已经属于其他 `run_id`，立即失败，不覆盖冲突笔记。
-
-在 Codex 沙箱内，如果 Obsidian CLI 返回 134 或被系统限制，发布脚本必须在获得用户批准后，以完全相同的脚本路径和发布计划在沙箱外重新执行。不要改用直接 Vault 文件操作绕过限制。
-
-只读检查可以单独运行：
+首次运行或认证变化后先预检：
 
 ```bash
-python3 <skill-dir>/scripts/publish_obsidian.py \
-  /absolute/path/to/<run-dir>/obsidian-publish.json \
-  --preflight
+python3 <skill-dir>/scripts/collect_ai_trends.py --preflight
 ```
 
-## 配置
-
-默认配置位于 `references/default-config.json`。需要修改时复制到 Skill 目录之外，凭据不得写入配置。
-
-- `reddit.subreddits`：Reddit 社区列表。
-- `x.accounts`：重点 X 账号列表。
-- `github.queries`：GitHub Trending 代理查询。
-- `document_language` 与 `drafts.language` 必须为 `zh-CN`。
-- `obsidian.enabled` 和 `obsidian.strict` 必须为 `true`。
-- `obsidian.vault`、`obsidian.target_directory`、`obsidian.index_path`、`obsidian.log_path` 只能使用 Vault 名称或 Vault 内相对路径，拒绝绝对路径和 `..`。
-
-可在单次运行中覆盖 Vault 和目录：
+运行采集：
 
 ```bash
 python3 <skill-dir>/scripts/collect_ai_trends.py \
-  --config /absolute/path/to/config.json \
-  --output-dir /absolute/path/to/ai-trend-output \
-  --obsidian-vault wiki \
-  --obsidian-dir raw
+  --output-dir /absolute/path/to/ai-trend-output
 ```
 
-覆盖值仍必须通过发布脚本的真实 Vault 与目录预检。不存在的 Vault 或目录会导致发布失败。
+读取标准输出中的 `editorial_input`。采集器只生成原始审计数据、`report.json`、`editorial-input.json` 和配置快照，不会生成可发布内容。
 
-## 健康状态与严格模式
+## 2. 编写 editorial.json
 
-- `complete`：每个配置请求均返回最新数据。
-- `partial`：至少一个请求使用缓存或失败，但仍有可用信号。可以发布，但笔记必须显示警告。
-- `failed`：没有可用信号。仍发布包含诊断的笔记，但不得生成无来源事实或草稿。
-- 采集器的 `--strict` 控制数据不完整是否令采集命令失败；它不取消 Obsidian 发布。
-- `obsidian.strict` 控制发布契约，固定为 `true`；任何发布或最终验证失败都令整个工作流失败。
+读取 `<run-dir>/editorial-input.json`，按给定顺序处理全部 `topics`。数量必须等于 `required_topic_count`；不足 10 个时不得补造话题。
 
-不要把缓存数据描述为最新数据，不要从标题单独推断事实，不要删除草稿中的来源链接。该 Skill 只生成 X 草稿，不会发布、点赞、转发或回复。
+在 `<run-dir>/editorial.json` 写入：
 
-## 失败处理
+```json
+{
+  "schema_version": 1,
+  "run_id": "与 editorial-input.json 一致",
+  "language": "zh-CN",
+  "items": [
+    {
+      "rank": 1,
+      "topic_id": "按输入原样保留",
+      "title_zh": "8 至 28 字中文标题",
+      "recommendation_reason": "20 至 50 字推荐理由",
+      "x_post": "120 至 180 字具体中文长帖正文\n\nhttps://主来源",
+      "primary_url": "必须来自该话题 evidence"
+    }
+  ]
+}
+```
 
-- opencli 守护进程或浏览器桥接失败：运行 `opencli doctor`，恢复连接后用同一配置重试，不要静默替换为网页搜索。
-- `gh auth status` 失败：让用户通过 `gh auth login` 恢复认证，不索取或回显令牌。
-- Obsidian 预检失败：保留本地运行目录与 `obsidian-publish-result.json`，修复 CLI、Vault、目录或索引后使用同一发布计划重试。
-- 索引或日志失败：不要删除已创建的趋势笔记；重试会补全缺失步骤。
-- 回读摘要不一致：停止并报告冲突，不要用 `overwrite` 强行替换趋势笔记。
+撰写规则：
 
-## 确定性验证
+- 用具体事实说明发生了什么、影响谁或改变了什么工作流，再给出简短判断。
+- 推荐理由解释为什么现在值得发布，依据时效性、跨来源印证、采用信号或受众价值。
+- 每条只保留一个主来源 URL，并放在最后一行。主来源优先使用项目、论文或官方仓库，其次官方 X，最后 Reddit。
+- 最多使用一个 hashtag 和一个 emoji；不要使用 Markdown。
+- 禁止“检测到来自”“共同信号”“建议先核对原始信息”等空泛模板。
+- 不得把英文原始标题直接当作中文标题或正文，不得编造 evidence 中不存在的事实。
 
-修改脚本、配置、排序、模板或发布逻辑后，运行完整测试：
+## 3. 生成终稿
+
+```bash
+python3 <skill-dir>/scripts/finalize_ai_trends.py \
+  --run-dir /absolute/path/to/<run-dir>
+```
+
+终稿脚本验证数量、顺序、中文比例、长度、URL、重复内容和泛化模板，然后生成：
+
+- `report.md`、`x-drafts.md`：精简的人类阅读版本；
+- `drafts.json`：结构化成稿；
+- `obsidian-note.md`、`obsidian-publish.json`：待发布笔记和确定性计划。
+
+如果 `obsidian-publish-result.json` 已是 `published`，不得重新终稿化该运行。
+
+## 4. 发布到 Obsidian
+
+```bash
+python3 <skill-dir>/scripts/publish_obsidian.py \
+  /absolute/path/to/<run-dir>/obsidian-publish.json
+```
+
+只有发布脚本返回 0 且结果状态为 `published` 才算成功。Codex 沙箱阻止 Obsidian CLI 或出现退出 134 时，在获得批准后以相同命令在沙箱外重试；禁止直接读写 Vault 文件。
+
+默认使用 `wiki` Vault 和既有 `raw/` 目录，不创建新目录。发布器根据 `run_id`、wikilink 和日志标记幂等补全趋势笔记、`index.md` 与 `log.md`。
+
+## 用户返回格式
+
+完整返回全部 N 个话题，不重复机器诊断：
+
+````markdown
+## 01｜中文话题标题
+
+**推荐理由：** 为什么值得现在发布。
+
+**X 成稿：**
+
+```text
+可复制发布的中文长帖。
+
+https://主来源
+```
+````
+
+结尾仅附 Obsidian wikilink、健康状态和“本次共 N 个可靠话题”。正常运行不显示来源表、请求记录或局限说明；`partial` 或 `failed` 只显示一条数据不完整警告。
+
+## 可靠性
+
+- `complete`、`partial`、`failed` 继续由 `report.json` 决定；即使采集命令因 `--strict` 非零，只要生成了运行目录，仍完成编辑、终稿和 Obsidian 诊断归档。
+- 所有原始链接、指标、来源状态和请求诊断保留在本地 JSON，不进入精简正文。
+- 该 Skill 只生成成稿，不会在 X 自动发布、点赞、转发或回复。
+- 配置默认固定为最多 10 个话题、X 长帖模式、正文 120–180 字、推荐理由 20–50 字。
+
+## 验证
 
 ```bash
 PYTHONPYCACHEPREFIX=/tmp/collect-ai-trends-pycache \
 python3 -m unittest discover -s <skill-dir>/scripts/tests -v
 ```
 
-测试必须使用伪 Obsidian CLI，不能向真实 Vault 写入测试数据。真实环境只先做 `--preflight`；只有 opencli、gh 和 Obsidian CLI 全部通过后，才执行真实数据采集与发布。
+修改后还要运行 Skill 校验和真实 Obsidian 只读预检。只有 opencli、gh 和 Obsidian CLI 全部通过预检后，才执行真实数据发布。
