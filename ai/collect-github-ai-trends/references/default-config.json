@@ -7,44 +7,8 @@
   "request_timeout_seconds": 45,
   "request_retries": 1,
   "cache_max_age_hours": 24,
-  "reddit": {
-    "enabled": true,
-    "subreddits": [
-      "LocalLLaMA",
-      "MachineLearning",
-      "artificial",
-      "ChatGPT",
-      "ChatGPTCoding",
-      "AI_Agents"
-    ],
-    "sort": "hot",
-    "time": "week",
-    "limit_per_subreddit": 20
-  },
-  "x": {
-    "enabled": true,
-    "accounts": [
-      "OpenAI",
-      "AnthropicAI",
-      "GoogleDeepMind",
-      "MetaAI",
-      "huggingface",
-      "NVIDIAAI",
-      "MistralAI",
-      "karpathy",
-      "AndrewYNg"
-    ],
-    "topic_queries": [
-      "\"coding agent\" OR \"coding agents\" OR \"agentic coding\"",
-      "\"AI coding\" OR \"AI coding assistant\" OR \"AI code generation\""
-    ],
-    "batch_size": 3,
-    "limit_per_batch": 30,
-    "limit_per_topic_query": 30,
-    "top_by_engagement": 20,
-    "exclude_replies": true,
-    "exclude_retweets": true
-  },
+  "reddit": {"enabled": false},
+  "x": {"enabled": false, "topic_queries": []},
   "github": {
     "enabled": true,
     "queries": [
@@ -59,12 +23,8 @@
     "limit_per_query": 20
   },
   "ranking": {
-    "source_weights": {
-      "reddit": 1.0,
-      "x": 1.0,
-      "github": 1.0
-    },
-    "cross_source_bonus": 8.0,
+    "source_weights": {"github": 1.0},
+    "cross_source_bonus": 0.0,
     "cluster_similarity": 0.52,
     "report_topic_count": 10
   },

@@ -94,6 +94,10 @@ def main() -> int:
         if mode == "log-append" and target.name == "log.md":
             return fail("injected log failure")
         existing = target.read_text(encoding="utf-8")
+        if "inline" in command_arguments:
+            target.write_text(existing + content, encoding="utf-8")
+            print(relative)
+            return 0
         separator = "" if not existing or existing.endswith("\n") else "\n"
         target.write_text(existing + separator + content + "\n", encoding="utf-8")
         print(relative)

@@ -1,0 +1,29 @@
+{
+  "total_count": 2,
+  "items": [
+    {
+      "full_name": "example/reasoning-model-evals",
+      "description": "Reproducible evaluations for a new OpenAI reasoning model",
+      "html_url": "https://github.com/example/reasoning-model-evals",
+      "created_at": "2026-07-13T08:00:00Z",
+      "pushed_at": "2026-07-14T12:00:00Z",
+      "stargazers_count": 3400,
+      "forks_count": 260,
+      "open_issues_count": 18,
+      "language": "Python",
+      "owner": {"login": "example"}
+    },
+    {
+      "full_name": "example/lean-local-runtime",
+      "description": "Memory-efficient local inference on consumer GPUs",
+      "html_url": "https://github.com/example/lean-local-runtime",
+      "created_at": "2026-07-13T10:00:00Z",
+      "pushed_at": "2026-07-14T13:00:00Z",
+      "stargazers_count": 2100,
+      "forks_count": 170,
+      "open_issues_count": 11,
+      "language": "C++",
+      "owner": {"login": "example"}
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub AI 趋势采集"
+  short_description: "采集 GitHub AI 与编程智能体项目信号并生成中文选题成稿"
+  default_prompt: "使用 $collect-github-ai-trends 采集 GitHub 最新 AI 项目信号，生成中文 X 成稿并归档。"

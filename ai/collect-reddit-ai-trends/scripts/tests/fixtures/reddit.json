@@ -1,0 +1,23 @@
+[
+  {
+    "id": "reddit-1",
+    "title": "OpenAI releases a new reasoning model for developers",
+    "subreddit": "MachineLearning",
+    "author": "research_reader",
+    "score": 1840,
+    "comments": 312,
+    "url": "https://www.reddit.com/r/MachineLearning/comments/reddit1/openai_reasoning_model/",
+    "created_utc": "2026-07-14T08:00:00Z",
+    "selftext": "Discussion of the release and early evaluations."
+  },
+  {
+    "id": "reddit-2",
+    "title": "Local inference runtime cuts memory use on consumer GPUs",
+    "subreddit": "LocalLLaMA",
+    "author": "local_builder",
+    "upvotes": 920,
+    "comments": 140,
+    "url": "https://www.reddit.com/r/LocalLLaMA/comments/reddit2/local_runtime/",
+    "created_utc": "2026-07-14T10:00:00Z"
+  }
+]

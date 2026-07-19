@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect, normalize, rank, and render AI trend signals with bounded failure modes."""
+"""Collect, normalize, and rank X AI trend signals with bounded failure modes."""
 
 from __future__ import annotations
 
@@ -23,7 +23,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 SCHEMA_VERSION = "1.0"
-SOURCE_NAMES = ("reddit", "x", "github")
+SOURCE_NAMES = ("x",)
+EXPECTED_SOURCE = "x"
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 TOKEN_RE = re.compile(
     r"(?i)(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|bearer\s+[A-Za-z0-9._~+/=-]{16,})"
@@ -121,9 +122,12 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("config.document_language must be zh-CN")
     if not isinstance(config.get("window_hours"), (int, float)) or config["window_hours"] <= 0:
         raise ValueError("config.window_hours must be positive")
-    for source in SOURCE_NAMES:
+    for source in ("reddit", "x", "github"):
         if not isinstance(config.get(source), dict):
             raise ValueError(f"config.{source} must be an object")
+    enabled_sources = [source for source in ("reddit", "x", "github") if config[source].get("enabled")]
+    if enabled_sources != [EXPECTED_SOURCE]:
+        raise ValueError(f"this skill requires only config.{EXPECTED_SOURCE}.enabled=true")
     if config["reddit"].get("enabled") and not config["reddit"].get("subreddits"):
         raise ValueError("config.reddit.subreddits must not be empty when enabled")
     if config["x"].get("enabled") and not config["x"].get("accounts"):
@@ -763,8 +767,6 @@ def run_preflight() -> int:
     checks = [
         command_check(["opencli", "--version"]),
         command_check(["opencli", "doctor"], timeout=30, failure_markers=("[FAIL]", "[MISSING]")),
-        command_check(["gh", "--version"]),
-        command_check(["gh", "auth", "status"]),
     ]
     payload = {"status": "ok" if all(check["status"] == "ok" for check in checks) else "failed", "checks": checks}
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -774,14 +776,14 @@ def run_preflight() -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=default_config_path(), help="JSON configuration path")
-    parser.add_argument("--output-dir", type=Path, default=Path("ai-trend-output"), help="Output root")
-    parser.add_argument("--fixture-dir", type=Path, help="Read reddit.json, x.json, and github.json instead of calling CLIs")
+    parser.add_argument("--output-dir", type=Path, default=Path("x-ai-trend-output"), help="Output root")
+    parser.add_argument("--fixture-dir", type=Path, help="Read x.json instead of calling opencli")
     parser.add_argument("--run-id", help="Deterministic run id in YYYYMMDDTHHMMSSZ[-suffix] form")
     parser.add_argument("--no-cache", action="store_true", help="Disable cache reads and writes")
     parser.add_argument("--strict", action="store_true", help="Return nonzero unless health is complete")
     parser.add_argument("--obsidian-vault", help="Override config.obsidian.vault with a Vault name")
     parser.add_argument("--obsidian-dir", help="Override config.obsidian.target_directory with a relative path")
-    parser.add_argument("--preflight", action="store_true", help="Check opencli bridge and gh authentication, then exit")
+    parser.add_argument("--preflight", action="store_true", help="Check the opencli bridge, then exit")
     return parser
 
 
@@ -834,8 +836,7 @@ def main() -> int:
         topics = cluster_items(all_items, config)
         health = build_health(source_runs, len(all_items))
         limitations = [
-            "GitHub 没有公开的官方 Trending API，因此相关结果是基于仓库搜索构建的趋势代理指标。",
-            "Reddit 和 X 数据依赖用户现有的 opencli 浏览器会话，以及网站当时可见的结果。",
+            "X 数据依赖用户现有的 opencli 浏览器会话，以及网站当时可见的结果。",
             "词法聚类可能遗漏相关话题，也可能合并措辞相似但实际不同的讨论；必须核对原始链接。",
             "自动生成的 X 草稿是带来源的编辑起点，不代表已经独立核实全部事实。",
         ]
@@ -849,6 +850,7 @@ def main() -> int:
                 "config_path": str(args.config.resolve()),
                 "fixture_mode": bool(args.fixture_dir),
                 "document_language": "zh-CN",
+                "channel": EXPECTED_SOURCE,
             },
             "health": health,
             "source_runs": source_runs,
@@ -863,10 +865,7 @@ def main() -> int:
             "generated_at": iso_z(now),
             "health_status": health["status"],
             "stage": "collected",
-            "files": [
-                "report.json", "editorial-input.json", "run-config.json",
-                "raw/reddit.json", "raw/x.json", "raw/github.json",
-            ],
+            "files": ["report.json", "editorial-input.json", "run-config.json", "raw/x.json"],
         }
         (temp_dir / "raw").mkdir(parents=True, exist_ok=False)
         for source in SOURCE_NAMES:

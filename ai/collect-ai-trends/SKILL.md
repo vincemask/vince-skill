@@ -24,6 +24,8 @@ python3 <skill-dir>/scripts/collect_ai_trends.py \
   --output-dir /absolute/path/to/ai-trend-output
 ```
 
+默认话题因子除通用 AI 外，还覆盖 `coding agent` 与 `AI coding`：Reddit 采集相关社区，X 运行独立主题查询，GitHub 检索对应仓库 topic。需要调整同义词或请求量时，复制并修改 `references/default-config.json` 后通过 `--config` 传入；不要在脚本中硬编码临时关键词。
+
 读取标准输出中的 `editorial_input`。采集器只生成原始审计数据、`report.json`、`editorial-input.json` 和配置快照，不会生成可发布内容。
 
 ## 2. 编写 editorial.json
@@ -84,6 +86,8 @@ python3 <skill-dir>/scripts/publish_obsidian.py \
 只有发布脚本返回 0 且结果状态为 `published` 才算成功。Codex 沙箱阻止 Obsidian CLI 或出现退出 134 时，在获得批准后以相同命令在沙箱外重试；禁止直接读写 Vault 文件。
 
 默认使用 `wiki` Vault 和既有 `raw/` 目录，不创建新目录。发布器根据 `run_id`、wikilink 和日志标记幂等补全趋势笔记、`index.md` 与 `log.md`。
+
+若 Obsidian CLI 报超时且 Obsidian 未在运行，先执行 `open -a Obsidian`，等待应用启动后用 `obsidian version` 确认可用，再以同一发布命令重试。不要绕过 CLI 直接写 Vault。发布器会将较长的中文笔记和 `index.md` 拆成安全的小段写入，以避免多字节字符损坏或超时。
 
 ## 用户返回格式
 

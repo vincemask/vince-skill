@@ -1,0 +1,4 @@
+interface:
+  display_name: "X AI 趋势采集"
+  short_description: "采集 X 平台 AI 与编程智能体趋势并生成中文选题和长帖成稿"
+  default_prompt: "使用 $collect-x-ai-trends 采集 X 平台最新 AI 话题，生成中文 X 成稿并归档。"

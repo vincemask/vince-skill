@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -165,6 +166,54 @@ class PublisherIntegrationTests(unittest.TestCase):
         self.assertEqual(payload["stage"], "note")
         self.assertNotIn(self.plan["note_wikilink"], (self.vault / "index.md").read_text(encoding="utf-8"))
         self.assertNotIn(self.plan["log_marker"], (self.vault / "log.md").read_text(encoding="utf-8"))
+
+    def test_large_cjk_note_is_uploaded_in_safe_chunks(self) -> None:
+        note = ("a" * 3400 + "开源\n") * 3 + "尾\n"
+        (self.run_dir / "obsidian-note.md").write_text(note, encoding="utf-8")
+        self.plan["note_sha256"] = hashlib.sha256(note.encode("utf-8")).hexdigest()
+        self.plan["required_note_markers"] = ["开源", "尾"]
+        self.plan_path.write_text(json.dumps(self.plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        result = self.publish()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        writes = []
+        for line in self.command_log.read_text(encoding="utf-8").splitlines():
+            command = json.loads(line)
+            if (
+                command["command"] in {"create", "append"}
+                and f"path={self.plan['note_path']}" in command["arguments"]
+            ):
+                content = next((value[8:] for value in command["arguments"] if value.startswith("content=")), None)
+                if content is not None:
+                    writes.append(content)
+        self.assertEqual(len(writes), 3)
+        self.assertEqual("".join(writes), note)
+        self.assertTrue(all(len(content.encode("utf-8")) <= 3500 for content in writes))
+
+    def test_large_index_is_uploaded_in_safe_chunks(self) -> None:
+        index = (
+            "# Index\n\n> Last updated: 2026-07-14 | Total pages: 10\n\n## Raw\n"
+            + ("a" * 3400 + "开源\n") * 3
+        )
+        (self.vault / "index.md").write_text(index, encoding="utf-8")
+
+        result = self.publish()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        writes = []
+        for line in self.command_log.read_text(encoding="utf-8").splitlines():
+            command = json.loads(line)
+            if (
+                command["command"] in {"create", "append"}
+                and f"path={self.plan['index_path']}" in command["arguments"]
+            ):
+                content = next((value[8:] for value in command["arguments"] if value.startswith("content=")), None)
+                if content is not None:
+                    writes.append(content)
+        self.assertGreater(len(writes), 1)
+        self.assertEqual("".join(writes), (self.vault / "index.md").read_text(encoding="utf-8"))
+        self.assertTrue(all(len(content.encode("utf-8")) <= 3500 for content in writes))
 
     def test_preflight_is_read_only_and_uses_cli_for_every_vault_check(self) -> None:
         before_index = (self.vault / "index.md").read_text(encoding="utf-8")
