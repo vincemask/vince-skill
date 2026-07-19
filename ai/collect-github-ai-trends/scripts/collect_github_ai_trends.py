@@ -31,7 +31,6 @@ TOKEN_RE = re.compile(
 )
 WORD_RE = re.compile(r"[a-z0-9][a-z0-9+#.-]{1,}", re.IGNORECASE)
 RUN_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z(?:-[a-z0-9-]+)?$")
-VAULT_NAME_RE = re.compile(r"^[^/\\]+$")
 STOP_WORDS = {
     "about", "after", "again", "also", "and", "are", "but", "for", "from", "has", "have",
     "into", "its", "new", "not", "now", "our", "the", "their", "this", "that", "with", "your",
@@ -92,29 +91,6 @@ def default_config_path() -> Path:
     return Path(__file__).resolve().parent.parent / "references" / "default-config.json"
 
 
-def validate_relative_vault_path(value: Any, field: str, *, directory: bool = False) -> str:
-    text = str(value or "").strip().replace("\\", "/")
-    path = Path(text)
-    if (
-        not text
-        or text in (".", "..")
-        or path.is_absolute()
-        or "//" in text
-        or any(part in (".", "..") for part in path.parts)
-    ):
-        raise ValueError(f"{field} must be a relative Vault path without '.' or '..'")
-    if directory and text.endswith("/"):
-        text = text.rstrip("/")
-    return text
-
-
-def validate_vault_name(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text or text in (".", "..") or not VAULT_NAME_RE.fullmatch(text):
-        raise ValueError("config.obsidian.vault must be a Vault name, not a path")
-    return text
-
-
 def validate_config(config: dict[str, Any]) -> None:
     if config.get("schema_version") != 1:
         raise ValueError("config.schema_version must be 1")
@@ -137,6 +113,21 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("config.x.topic_queries must be a list of non-empty strings")
     if config["github"].get("enabled") and not config["github"].get("queries"):
         raise ValueError("config.github.queries must not be empty when enabled")
+    for field in ("active_window_days", "emerging_window_days"):
+        if float(config["github"].get(field, 0)) <= 0:
+            raise ValueError(f"config.github.{field} must be positive")
+    ranking = config.get("ranking", {})
+    ranking_weights = [
+        float(ranking.get("popularity_weight", 0.4)),
+        float(ranking.get("momentum_weight", 0.5)),
+        float(ranking.get("activity_weight", 0.1)),
+    ]
+    if any(weight < 0 for weight in ranking_weights) or not math.isclose(sum(ranking_weights), 1.0, abs_tol=1e-9):
+        raise ValueError("config.ranking popularity/momentum/activity weights must be non-negative and sum to 1")
+    if float(ranking.get("momentum_min_age_days", 7)) <= 0:
+        raise ValueError("config.ranking.momentum_min_age_days must be positive")
+    if float(ranking.get("activity_half_life_days", 45)) <= 0:
+        raise ValueError("config.ranking.activity_half_life_days must be positive")
     drafts = config.get("drafts", {})
     if drafts.get("language") != "zh-CN":
         raise ValueError("config.drafts.language must be zh-CN")
@@ -160,17 +151,6 @@ def validate_config(config: dict[str, Any]) -> None:
         ZoneInfo(str(config.get("timezone", "Asia/Shanghai")))
     except ZoneInfoNotFoundError as exc:
         raise ValueError("config.timezone must name an installed IANA timezone") from exc
-    obsidian = config.get("obsidian")
-    if not isinstance(obsidian, dict):
-        raise ValueError("config.obsidian must be an object")
-    if obsidian.get("enabled") is not True:
-        raise ValueError("config.obsidian.enabled must be true because publishing is mandatory")
-    if obsidian.get("strict") is not True:
-        raise ValueError("config.obsidian.strict must be true because publishing failures are fatal")
-    validate_vault_name(obsidian.get("vault"))
-    validate_relative_vault_path(obsidian.get("target_directory"), "config.obsidian.target_directory", directory=True)
-    validate_relative_vault_path(obsidian.get("index_path"), "config.obsidian.index_path")
-    validate_relative_vault_path(obsidian.get("log_path"), "config.obsidian.log_path")
 
 
 def extract_rows(payload: Any) -> list[dict[str, Any]]:
@@ -412,7 +392,9 @@ def normalize_github(row: dict[str, Any]) -> dict[str, Any] | None:
     description = str(row.get("description") or "").strip()
     title = f"{name}: {description}" if description else name
     url = canonical_url(row.get("html_url") or row.get("url"))
-    published = parse_datetime(row.get("created_at") or row.get("pushed_at") or row.get("updated_at"))
+    created = parse_datetime(row.get("created_at"))
+    pushed = parse_datetime(row.get("pushed_at") or row.get("updated_at"))
+    published = pushed or created
     stars = as_number(row.get("stargazers_count", row.get("stars")))
     forks = as_number(row.get("forks_count", row.get("forks")))
     return {
@@ -422,6 +404,8 @@ def normalize_github(row: dict[str, Any]) -> dict[str, Any] | None:
         "summary": description[:500],
         "url": url,
         "published_at": iso_z(published) if published else None,
+        "created_at": iso_z(created) if created else None,
+        "pushed_at": iso_z(pushed) if pushed else None,
         "author": str((row.get("owner") or {}).get("login") if isinstance(row.get("owner"), dict) else ""),
         "channel": str(row.get("language") or ""),
         "metrics": {"stars": stars, "forks": forks, "open_issues": as_number(row.get("open_issues_count"))},
@@ -449,21 +433,58 @@ def within_window(item: dict[str, Any], cutoff: datetime, include_older: bool) -
     return published is None or published >= cutoff
 
 
+def percentile_ranks(items: list[dict[str, Any]], field: str) -> dict[str, float]:
+    values = sorted(float(item.get(field, 0.0)) for item in items)
+    count = len(values)
+    return {
+        item["id"]: sum(value <= float(item.get(field, 0.0)) for value in values) / max(count, 1)
+        for item in items
+    }
+
+
 def score_items(items: list[dict[str, Any]], config: dict[str, Any], now: datetime) -> None:
-    weights = config["ranking"].get("source_weights", {})
-    window_hours = float(config["window_hours"])
+    ranking = config["ranking"]
+    source_weights = ranking.get("source_weights", {})
+    popularity_weight = float(ranking.get("popularity_weight", 0.4))
+    momentum_weight = float(ranking.get("momentum_weight", 0.5))
+    activity_weight = float(ranking.get("activity_weight", 0.1))
+    minimum_age_days = float(ranking.get("momentum_min_age_days", 7))
+    activity_half_life_days = float(ranking.get("activity_half_life_days", 45))
     by_source = {source: [item for item in items if item["source"] == source] for source in SOURCE_NAMES}
     for source, source_items in by_source.items():
-        ordered = sorted(source_items, key=lambda item: (item["raw_engagement"], item["id"]))
-        count = len(ordered)
-        percentiles = {item["id"]: (index + 1) / max(count, 1) for index, item in enumerate(ordered)}
         for item in source_items:
-            published = parse_datetime(item.get("published_at"))
-            age_hours = max(0.0, (now - published).total_seconds() / 3600) if published else window_hours
-            recency = math.exp(-age_hours / max(window_hours, 1.0))
-            base = 65.0 * percentiles[item["id"]] + 35.0 * recency
-            item["score"] = round(max(0.0, min(100.0, base * float(weights.get(source, 1.0)))), 2)
-            item["age_hours"] = round(age_hours, 2) if published else None
+            created = parse_datetime(item.get("created_at"))
+            pushed = parse_datetime(item.get("pushed_at") or item.get("published_at"))
+            age_days = max(minimum_age_days, (now - created).total_seconds() / 86400) if created else minimum_age_days
+            push_age_days = max(0.0, (now - pushed).total_seconds() / 86400) if pushed else activity_half_life_days * 4
+            stars = max(float(item.get("metrics", {}).get("stars", 0.0)), 0.0)
+            forks = max(float(item.get("metrics", {}).get("forks", 0.0)), 0.0)
+            stars_per_day = stars / age_days
+            forks_per_day = forks / age_days
+            item["raw_momentum"] = math.log1p(stars_per_day) + 1.5 * math.log1p(forks_per_day)
+            item["age_days"] = round(age_days, 2)
+            item["age_hours"] = round(push_age_days * 24, 2) if pushed else None
+            item["metrics"]["stars_per_day_proxy"] = round(stars_per_day, 2)
+            item["metrics"]["forks_per_day_proxy"] = round(forks_per_day, 2)
+        popularity_percentiles = percentile_ranks(source_items, "raw_engagement")
+        momentum_percentiles = percentile_ranks(source_items, "raw_momentum")
+        for item in source_items:
+            push_age_days = float(item["age_hours"]) / 24 if item.get("age_hours") is not None else activity_half_life_days * 4
+            activity = math.pow(0.5, push_age_days / activity_half_life_days)
+            popularity = popularity_percentiles[item["id"]]
+            momentum = momentum_percentiles[item["id"]]
+            base = 100.0 * (
+                popularity_weight * popularity
+                + momentum_weight * momentum
+                + activity_weight * activity
+            )
+            item["score"] = round(max(0.0, min(100.0, base * float(source_weights.get(source, 1.0)))), 2)
+            item["ranking_signals"] = {
+                "popularity_percentile": round(popularity, 4),
+                "momentum_percentile": round(momentum, 4),
+                "activity_score": round(activity, 4),
+                "momentum_basis": "lifetime-stars-and-forks-per-day-proxy",
+            }
 
 
 def title_tokens(title: str) -> set[str]:
@@ -594,8 +615,14 @@ def collect_live(config: dict[str, Any], output_root: Path, since: datetime, use
     github = config["github"]
     if github.get("enabled"):
         since_date = since.date().isoformat()
+        active_since_date = (utc_now() - timedelta(days=float(github.get("active_window_days", 180)))).date().isoformat()
+        emerging_since_date = (utc_now() - timedelta(days=float(github.get("emerging_window_days", 365)))).date().isoformat()
         for index, query_template in enumerate(github["queries"], start=1):
-            query = str(query_template).format(since_date=since_date)
+            query = str(query_template).format(
+                since_date=since_date,
+                active_since_date=active_since_date,
+                emerging_since_date=emerging_since_date,
+            )
             request_id = f"github-query-{index}-{query}"
             command = [
                 "gh", "api", "-X", "GET", "search/repositories",
@@ -711,9 +738,12 @@ def build_editorial_input(
                     "summary": item.get("summary", ""),
                     "url": item["url"],
                     "published_at": item.get("published_at"),
+                    "created_at": item.get("created_at"),
+                    "pushed_at": item.get("pushed_at"),
                     "author": item.get("author", ""),
                     "channel": item.get("channel", ""),
                     "metrics": item.get("metrics", {}),
+                    "ranking_signals": item.get("ranking_signals", {}),
                     "score": item.get("score"),
                 }
                 for item in evidence
@@ -739,10 +769,6 @@ def build_editorial_input(
         },
         "topics": topics,
     }
-
-
-def yaml_quote(value: Any) -> str:
-    return json.dumps(str(value), ensure_ascii=False)
 
 
 def command_check(
@@ -781,8 +807,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", help="Deterministic run id in YYYYMMDDTHHMMSSZ[-suffix] form")
     parser.add_argument("--no-cache", action="store_true", help="Disable cache reads and writes")
     parser.add_argument("--strict", action="store_true", help="Return nonzero unless health is complete")
-    parser.add_argument("--obsidian-vault", help="Override config.obsidian.vault with a Vault name")
-    parser.add_argument("--obsidian-dir", help="Override config.obsidian.target_directory with a relative path")
     parser.add_argument("--preflight", action="store_true", help="Check gh CLI and authentication, then exit")
     return parser
 
@@ -793,10 +817,6 @@ def main() -> int:
         return run_preflight()
     try:
         config = load_json(args.config.resolve())
-        if args.obsidian_vault:
-            config.setdefault("obsidian", {})["vault"] = args.obsidian_vault
-        if args.obsidian_dir:
-            config.setdefault("obsidian", {})["target_directory"] = args.obsidian_dir
         validate_config(config)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"configuration error: {safe_error(str(exc))}", file=sys.stderr)
@@ -837,6 +857,7 @@ def main() -> int:
         health = build_health(source_runs, len(all_items))
         limitations = [
             "GitHub 没有公开的官方 Trending API，因此相关结果是基于仓库搜索构建的趋势代理指标。",
+            "增长动量由当前 stars/forks 按项目年龄折算，不是 GitHub 官方近期增星数据。",
             "词法聚类可能遗漏相关话题，也可能合并措辞相似但实际不同的讨论；必须核对原始链接。",
             "自动生成的 X 草稿是带来源的编辑起点，不代表已经独立核实全部事实。",
         ]
@@ -851,6 +872,9 @@ def main() -> int:
                 "fixture_mode": bool(args.fixture_dir),
                 "document_language": "zh-CN",
                 "channel": EXPECTED_SOURCE,
+                "active_window_days": float(config["github"].get("active_window_days", 180)),
+                "emerging_window_days": float(config["github"].get("emerging_window_days", 365)),
+                "include_older_items": bool(config.get("include_older_items")),
             },
             "health": health,
             "source_runs": source_runs,

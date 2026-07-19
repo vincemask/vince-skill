@@ -2,8 +2,8 @@
   "schema_version": 1,
   "document_language": "zh-CN",
   "timezone": "Asia/Shanghai",
-  "window_hours": 72,
-  "include_older_items": false,
+  "window_hours": 4320,
+  "include_older_items": true,
   "request_timeout_seconds": 45,
   "request_retries": 1,
   "cache_max_age_hours": 24,
@@ -11,22 +11,36 @@
   "x": {"enabled": false, "topic_queries": []},
   "github": {
     "enabled": true,
+    "active_window_days": 180,
+    "emerging_window_days": 365,
     "queries": [
-      "created:>={since_date} topic:llm",
-      "created:>={since_date} topic:artificial-intelligence",
-      "created:>={since_date} topic:machine-learning",
-      "pushed:>={since_date} topic:generative-ai stars:>500",
-      "created:>={since_date} topic:coding-agents",
-      "created:>={since_date} topic:ai-coding-agent",
-      "created:>={since_date} topic:ai-coding-assistant"
+      "pushed:>={active_since_date} topic:llm stars:>1000",
+      "pushed:>={active_since_date} topic:artificial-intelligence stars:>1000",
+      "pushed:>={active_since_date} topic:machine-learning stars:>5000",
+      "pushed:>={active_since_date} topic:generative-ai stars:>1000",
+      "pushed:>={active_since_date} topic:ai-agents stars:>500",
+      "pushed:>={active_since_date} topic:coding-agents stars:>100",
+      "pushed:>={active_since_date} topic:ai-coding-agent stars:>100",
+      "pushed:>={active_since_date} topic:ai-coding-assistant stars:>100",
+      "created:>={emerging_since_date} topic:llm stars:>500",
+      "created:>={emerging_since_date} topic:generative-ai stars:>200",
+      "created:>={emerging_since_date} topic:ai-agents stars:>100",
+      "created:>={emerging_since_date} topic:coding-agents stars:>50",
+      "created:>={emerging_since_date} topic:ai-coding-agent stars:>50",
+      "created:>={emerging_since_date} topic:ai-coding-assistant stars:>50"
     ],
-    "limit_per_query": 20
+    "limit_per_query": 30
   },
   "ranking": {
     "source_weights": {"github": 1.0},
     "cross_source_bonus": 0.0,
     "cluster_similarity": 0.52,
-    "report_topic_count": 10
+    "report_topic_count": 10,
+    "popularity_weight": 0.4,
+    "momentum_weight": 0.5,
+    "activity_weight": 0.1,
+    "momentum_min_age_days": 7,
+    "activity_half_life_days": 45
   },
   "drafts": {
     "language": "zh-CN",
@@ -37,13 +51,5 @@
     "min_recommendation_characters": 20,
     "max_recommendation_characters": 50,
     "max_hashtags": 1
-  },
-  "obsidian": {
-    "enabled": true,
-    "vault": "wiki",
-    "target_directory": "raw",
-    "strict": true,
-    "index_path": "index.md",
-    "log_path": "log.md"
   }
 }
