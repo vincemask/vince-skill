@@ -49,7 +49,7 @@ class FinalizerIntegrationTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def test_valid_editorial_generates_compact_human_and_obsidian_outputs(self) -> None:
+    def test_valid_editorial_generates_direct_response_outputs(self) -> None:
         write_editorial(self.run_dir)
         result = finalize_run(self.run_dir)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -57,11 +57,11 @@ class FinalizerIntegrationTests(unittest.TestCase):
         self.assertEqual(payload["status"], "finalized")
         self.assertEqual(payload["topic_count"], 2)
         for relative in (
-            "editorial.json", "drafts.json", "report.md", "x-drafts.md",
-            "obsidian-note.md", "obsidian-publish.json", "finalized.json",
+            "editorial.json", "drafts.json", "report.md", "x-drafts.md", "finalized.json",
         ):
             self.assertTrue((self.run_dir / relative).is_file(), relative)
         report_md = (self.run_dir / "report.md").read_text(encoding="utf-8")
+        self.assertEqual(payload["content"], report_md)
         self.assertIn("# AI 热点与 X 成稿", report_md)
         self.assertIn("## 01｜推理模型开放开发者接口", report_md)
         self.assertIn("**推荐理由：**", report_md)
@@ -69,11 +69,8 @@ class FinalizerIntegrationTests(unittest.TestCase):
         self.assertIn("本次仅有 2 个可靠话题", report_md)
         for forbidden in ("## 来源状态", "## 采集诊断", "## 局限说明", "原始主标题", "证据来源："):
             self.assertNotIn(forbidden, report_md)
-        note = (self.run_dir / "obsidian-note.md").read_text(encoding="utf-8")
-        self.assertIn("[[concepts/news-monitoring-and-growth]]", note)
-        self.assertIn("post_mode: long", note)
-        self.assertEqual(note.count("  - \"https://github.com/example/"), 2)
-        self.assertNotIn("https://reddit.com/", note)
+        self.assertFalse((self.run_dir / "obsidian-note.md").exists())
+        self.assertFalse((self.run_dir / "obsidian-publish.json").exists())
         drafts = json.loads((self.run_dir / "drafts.json").read_text(encoding="utf-8"))
         self.assertEqual(len(drafts["drafts"]), 2)
         self.assertTrue(all(len(draft["sources"]) == 1 for draft in drafts["drafts"]))
@@ -84,8 +81,8 @@ class FinalizerIntegrationTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(validation.returncode, 0, validation.stderr)
-        plan = json.loads((self.run_dir / "obsidian-publish.json").read_text(encoding="utf-8"))
-        self.assertIn("2 个推荐话题与 2 条 X 成稿", plan["index_entry"])
+        latest = json.loads((self.output / "latest.json").read_text(encoding="utf-8"))
+        self.assertEqual(latest["content"], report_md)
 
     def test_editorial_validation_rejects_required_failure_modes(self) -> None:
         cases = {}
@@ -133,7 +130,7 @@ class FinalizerIntegrationTests(unittest.TestCase):
                 result = finalize_run(self.run_dir)
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(message, result.stderr)
-                self.assertFalse((self.run_dir / "obsidian-publish.json").exists())
+                self.assertFalse((self.run_dir / "report.md").exists())
 
     def test_partial_run_combines_all_notices_into_one_warning(self) -> None:
         report_path = self.run_dir / "report.json"
@@ -150,16 +147,14 @@ class FinalizerIntegrationTests(unittest.TestCase):
         for forbidden in ("## 来源状态", "## 采集诊断", "## 局限说明"):
             self.assertNotIn(forbidden, report_md)
 
-    def test_successfully_published_run_cannot_be_finalized_again(self) -> None:
+    def test_finalization_is_repeatable_without_external_publish_state(self) -> None:
         write_editorial(self.run_dir)
-        self.assertEqual(finalize_run(self.run_dir).returncode, 0)
-        (self.run_dir / "obsidian-publish-result.json").write_text(
-            json.dumps({"status": "published"}),
-            encoding="utf-8",
-        )
-        result = finalize_run(self.run_dir)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("已经发布成功", result.stderr)
+        first = finalize_run(self.run_dir)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_content = json.loads(first.stdout)["content"]
+        second = finalize_run(self.run_dir)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(json.loads(second.stdout)["content"], first_content)
 
 
 if __name__ == "__main__":

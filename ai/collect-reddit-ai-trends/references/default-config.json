@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "document_language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "window_hours": 72,
+  "include_older_items": false,
+  "request_timeout_seconds": 45,
+  "request_retries": 1,
+  "cache_max_age_hours": 24,
+  "reddit": {
+    "enabled": true,
+    "subreddits": [
+      "LocalLLaMA",
+      "MachineLearning",
+      "artificial",
+      "ChatGPT",
+      "ChatGPTCoding",
+      "AI_Agents"
+    ],
+    "sort": "hot",
+    "time": "week",
+    "limit_per_subreddit": 20
+  },
+  "x": {"enabled": false, "topic_queries": []},
+  "github": {"enabled": false},
+  "ranking": {
+    "source_weights": {"reddit": 1.0},
+    "cross_source_bonus": 0.0,
+    "cluster_similarity": 0.52,
+    "report_topic_count": 10
+  },
+  "drafts": {
+    "language": "zh-CN",
+    "count": 10,
+    "mode": "long",
+    "min_prose_characters": 120,
+    "max_prose_characters": 180,
+    "min_recommendation_characters": 20,
+    "max_recommendation_characters": 50,
+    "max_hashtags": 1
+  }
+}

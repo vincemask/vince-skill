@@ -11,7 +11,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from collect_ai_trends import (
+from collect_reddit_ai_trends import (
     SCHEMA_VERSION,
     STATUS_ZH,
     atomic_write,
@@ -278,14 +278,14 @@ def finalize(run_dir: Path, editorial_path: Path) -> dict[str, Any]:
     drafts = build_drafts_payload(items, editorial_input)
     compact_report = render_compact_report(report, drafts)
     manifest = load_json(run_dir / "manifest.json")
+    raw_files = [f"raw/{source}.json" for source in report.get("items", {})]
     manifest.update({
         "stage": "finalized",
         "topic_count": len(drafts["drafts"]),
         "files": [
             "report.json", "report.md", "editorial-input.json", "editorial.json",
-            "drafts.json", "x-drafts.md",
-            "run-config.json", "raw/reddit.json", "raw/x.json", "raw/github.json",
-        ],
+            "drafts.json", "x-drafts.md", "run-config.json",
+        ] + raw_files,
     })
     write_json(run_dir / "editorial.json", normalized_editorial)
     write_json(run_dir / "drafts.json", drafts)

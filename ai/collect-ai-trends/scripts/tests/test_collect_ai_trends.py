@@ -6,7 +6,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -15,6 +17,7 @@ COLLECTOR = SCRIPT_DIR / "collect_ai_trends.py"
 VALIDATOR = SCRIPT_DIR / "validate_x_drafts.py"
 CONFIG = TEST_DIR / "fixture-config.json"
 FIXTURES = TEST_DIR / "fixtures"
+DEFAULT_CONFIG = SCRIPT_DIR.parent / "references" / "default-config.json"
 
 
 def load_collector_module():
@@ -51,7 +54,7 @@ class CollectorIntegrationTests(unittest.TestCase):
                 "raw/reddit.json", "raw/x.json", "raw/github.json",
             ):
                 self.assertTrue((run_dir / relative).is_file(), relative)
-            for relative in ("report.md", "drafts.json", "x-drafts.md", "obsidian-note.md", "obsidian-publish.json"):
+            for relative in ("report.md", "drafts.json", "x-drafts.md"):
                 self.assertFalse((run_dir / relative).exists(), relative)
             self.assertTrue((output / "latest-collection.json").is_file())
             report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
@@ -126,28 +129,64 @@ class CollectorIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(check["status"], "failed")
 
-    def test_obsidian_path_overrides_reject_unsafe_paths(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            for value in ("../raw", "/absolute/raw", "raw/../other"):
-                with self.subTest(value=value):
-                    result = subprocess.run(
-                        [
-                            sys.executable, str(COLLECTOR), "--config", str(CONFIG),
-                            "--fixture-dir", str(FIXTURES), "--output-dir", temp,
-                            "--run-id", "20260715T000000Z-test", "--obsidian-dir", value,
-                        ],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                    self.assertEqual(result.returncode, 2)
-                    self.assertIn("config.obsidian.target_directory", result.stderr)
-
     def test_title_similarity_recognizes_containment(self) -> None:
         collector = load_collector_module()
         short = collector.title_tokens("new reasoning model for developers")
         long = collector.title_tokens("OpenAI releases a new reasoning model for developers with API access")
         self.assertGreaterEqual(collector.similarity(short, long), 0.7)
+
+    def test_default_config_collects_coding_agent_and_ai_coding_factors(self) -> None:
+        collector = load_collector_module()
+        config = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
+        collector.validate_config(config)
+
+        self.assertIn("ChatGPTCoding", config["reddit"]["subreddits"])
+        self.assertIn("AI_Agents", config["reddit"]["subreddits"])
+        x_queries = " ".join(config["x"]["topic_queries"]).lower()
+        self.assertIn("coding agent", x_queries)
+        self.assertIn("ai coding", x_queries)
+        github_queries = " ".join(config["github"]["queries"])
+        self.assertIn("topic:coding-agents", github_queries)
+        self.assertIn("topic:ai-coding-agent", github_queries)
+        self.assertIn("topic:ai-coding-assistant", github_queries)
+
+    def test_live_collection_runs_each_x_topic_factor_as_an_independent_query(self) -> None:
+        collector = load_collector_module()
+        config = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
+        config["reddit"]["enabled"] = False
+        config["github"]["enabled"] = False
+        config["x"]["accounts"] = []
+        calls: list[tuple[str, str, list[str]]] = []
+
+        def fake_fetch(source, request_id, command, *_args):
+            calls.append((source, request_id, command))
+            return [], {
+                "source": source,
+                "request_id": request_id,
+                "status": "fresh",
+                "fetched_at": "2026-07-16T00:00:00Z",
+                "attempts": 1,
+                "duration_seconds": 0.0,
+                "item_count": 0,
+            }
+
+        with patch.object(collector, "fetch_request", side_effect=fake_fetch):
+            collector.collect_live(
+                config,
+                Path("/tmp/unused-ai-trends-test"),
+                datetime(2026, 7, 13, tzinfo=timezone.utc),
+                use_cache=False,
+            )
+
+        self.assertEqual(len(calls), 2)
+        queries = [command[3] for source, request_id, command in calls]
+        self.assertTrue(all(source == "x" for source, request_id, command in calls))
+        self.assertTrue(all(request_id.startswith("x-topic-query-") for source, request_id, command in calls))
+        self.assertIn("coding agent", queries[0].lower())
+        self.assertIn("ai coding", queries[1].lower())
+        self.assertTrue(all("since:2026-07-13" in query for query in queries))
+        self.assertTrue(all("-filter:replies" in query for query in queries))
+        self.assertTrue(all("-filter:nativeretweets" in query for query in queries))
 
     def test_twelve_distinct_candidates_are_capped_at_ten(self) -> None:
         collector = load_collector_module()

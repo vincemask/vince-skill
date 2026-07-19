@@ -1,0 +1,24 @@
+[
+  {
+    "id": "x-1",
+    "author": "OpenAI",
+    "text": "We are releasing a new reasoning model for developers with updated evaluations and API access.",
+    "created_at": "2026-07-14T09:00:00Z",
+    "likes": 12000,
+    "retweets": 2400,
+    "replies": 900,
+    "views": 1800000,
+    "url": "https://x.com/OpenAI/status/1000000000000000001"
+  },
+  {
+    "id": "x-2",
+    "author": "huggingface",
+    "text": "A new open source toolkit makes local inference lighter on consumer GPUs.",
+    "created_at": "2026-07-14T11:00:00Z",
+    "likes": 4200,
+    "retweets": 720,
+    "replies": 160,
+    "views": 410000,
+    "url": "https://x.com/huggingface/status/1000000000000000002"
+  }
+]

@@ -1,11 +1,11 @@
 ---
 name: collect-ai-trends
-description: 通过 opencli 和 gh CLI 采集 Reddit、GitHub 与知名 X 账号的最新 AI 话题，由 Codex 基于证据撰写最多 10 条中文 X 长帖与推荐理由，校验后通过 Obsidian CLI 归档。适用于 AI 趋势监控、每日或每周选题、中文 X 内容策划、跨来源热点筛选和 Obsidian 情报归档。
+description: 通过 opencli 和 gh CLI 采集 Reddit、GitHub 与知名 X 账号的最新 AI 话题，由 Codex 基于证据撰写并直接输出最多 10 条中文 X 长帖与推荐理由。适用于 AI 趋势监控、每日或每周选题、中文 X 内容策划和跨来源热点筛选；不依赖 Obsidian 或其他发布系统。
 ---
 
-# AI 趋势采集与 X 成稿
+# AI 趋势采集与正文输出
 
-执行“采集 → 编辑 → 终稿 → Obsidian 发布”四个阶段。不要跳过编辑或终稿校验，也不要把采集器的机器诊断直接复制给用户。
+执行“采集 → 编辑 → 终稿输出”三个阶段。不要跳过编辑或终稿校验，也不要把采集器的机器诊断直接复制给用户。
 
 将本文件所在目录解析为 `<skill-dir>`，始终使用脚本绝对路径。
 
@@ -23,6 +23,8 @@ python3 <skill-dir>/scripts/collect_ai_trends.py --preflight
 python3 <skill-dir>/scripts/collect_ai_trends.py \
   --output-dir /absolute/path/to/ai-trend-output
 ```
+
+默认话题因子除通用 AI 外，还覆盖 `coding agent` 与 `AI coding`：Reddit 采集相关社区，X 运行独立主题查询，GitHub 检索对应仓库 topic。需要调整同义词或请求量时，复制并修改 `references/default-config.json` 后通过 `--config` 传入；不要在脚本中硬编码临时关键词。
 
 读取标准输出中的 `editorial_input`。采集器只生成原始审计数据、`report.json`、`editorial-input.json` 和配置快照，不会生成可发布内容。
 
@@ -70,20 +72,9 @@ python3 <skill-dir>/scripts/finalize_ai_trends.py \
 
 - `report.md`、`x-drafts.md`：精简的人类阅读版本；
 - `drafts.json`：结构化成稿；
-- `obsidian-note.md`、`obsidian-publish.json`：待发布笔记和确定性计划。
+- `finalized.json`：终稿完成状态。
 
-如果 `obsidian-publish-result.json` 已是 `published`，不得重新终稿化该运行。
-
-## 4. 发布到 Obsidian
-
-```bash
-python3 <skill-dir>/scripts/publish_obsidian.py \
-  /absolute/path/to/<run-dir>/obsidian-publish.json
-```
-
-只有发布脚本返回 0 且结果状态为 `published` 才算成功。Codex 沙箱阻止 Obsidian CLI 或出现退出 134 时，在获得批准后以相同命令在沙箱外重试；禁止直接读写 Vault 文件。
-
-默认使用 `wiki` Vault 和既有 `raw/` 目录，不创建新目录。发布器根据 `run_id`、wikilink 和日志标记幂等补全趋势笔记、`index.md` 与 `log.md`。
+读取终稿命令标准输出中的 `content` 字段，并将其作为最终正文直接返回。不要要求用户打开本地文件，也不要调用外部发布或归档系统。
 
 ## 用户返回格式
 
@@ -103,11 +94,11 @@ https://主来源
 ```
 ````
 
-结尾仅附 Obsidian wikilink、健康状态和“本次共 N 个可靠话题”。正常运行不显示来源表、请求记录或局限说明；`partial` 或 `failed` 只显示一条数据不完整警告。
+正文末尾只保留健康状态和“本次共 N 个可靠话题”。正常运行不显示来源表、请求记录或局限说明；`partial` 或 `failed` 只显示一条数据不完整警告。
 
 ## 可靠性
 
-- `complete`、`partial`、`failed` 继续由 `report.json` 决定；即使采集命令因 `--strict` 非零，只要生成了运行目录，仍完成编辑、终稿和 Obsidian 诊断归档。
+- `complete`、`partial`、`failed` 继续由 `report.json` 决定；即使采集命令因 `--strict` 非零，只要生成了运行目录，仍完成编辑与终稿输出。
 - 所有原始链接、指标、来源状态和请求诊断保留在本地 JSON，不进入精简正文。
 - 该 Skill 只生成成稿，不会在 X 自动发布、点赞、转发或回复。
 - 配置默认固定为最多 10 个话题、X 长帖模式、正文 120–180 字、推荐理由 20–50 字。
@@ -119,4 +110,4 @@ PYTHONPYCACHEPREFIX=/tmp/collect-ai-trends-pycache \
 python3 -m unittest discover -s <skill-dir>/scripts/tests -v
 ```
 
-修改后还要运行 Skill 校验和真实 Obsidian 只读预检。只有 opencli、gh 和 Obsidian CLI 全部通过预检后，才执行真实数据发布。
+修改后还要运行 Skill 校验。真实采集只要求本次启用渠道对应的 opencli 或 gh 通过预检。

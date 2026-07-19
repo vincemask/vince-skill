@@ -2,8 +2,8 @@
 
 ## Source strategy
 
-- Reddit: collect hot posts from the configured AI communities with `opencli reddit subreddit`. Keep subreddit, score, comments, publication time, and the original post URL.
-- X: group the configured accounts into small batches and query their recent posts with `opencli twitter search`. Small batches reduce browser work while preserving per-batch cache fallback.
+- Reddit: collect hot posts from the configured AI communities with `opencli reddit subreddit`. The default communities include `ChatGPTCoding` and `AI_Agents` to strengthen coding-agent coverage. Keep subreddit, score, comments, publication time, and the original post URL.
+- X: group the configured accounts into small batches and query their recent posts with `opencli twitter search`. Also run the configured `topic_queries`; the defaults explicitly cover `coding agent` and `AI coding` plus close aliases. Small independent requests reduce browser work while preserving per-query cache fallback.
 - GitHub: query `search/repositories` through `gh api`. GitHub has no public Trending API, so label this section as a proxy built from newly created repositories by stars and established repositories with recent pushes.
 
 The default X watchlist is a starter set, not a permanent authority list. Review handles periodically and replace inactive, renamed, or low-signal accounts. Prefer official organization accounts and researchers who regularly link to primary work.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub AI 趋势采集"
+  short_description: "筛选 GitHub 当下最热与上涨动量最强的 AI 项目"
+  default_prompt: "使用 $collect-github-ai-trends 采集 GitHub 当下最热、上涨趋势代理最强的 AI 项目，生成并直接返回中文 X 成稿。"

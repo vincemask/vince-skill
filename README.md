@@ -19,6 +19,18 @@ vince-skill/
 
 仓库按领域分类，每个 `<skill-name>` 目录都是一个可独立复制和安装的 Skill。目录名与 `SKILL.md` 中的 `name` 应保持一致，并使用小写字母、数字和连字符。
 
+## 已提供的 AI 趋势 Skill
+
+AI 趋势渠道已拆分为三个可独立安装、独立预检和独立运行的 Skill：
+
+| Skill | 数据渠道 | 运行依赖 |
+| --- | --- | --- |
+| [`collect-x-ai-trends`](ai/collect-x-ai-trends) | X 重点账号与主题查询 | `opencli` |
+| [`collect-reddit-ai-trends`](ai/collect-reddit-ai-trends) | Reddit AI 社区 | `opencli` |
+| [`collect-github-ai-trends`](ai/collect-github-ai-trends) | GitHub 仓库搜索趋势代理 | `gh` |
+
+三个目录都自带采集和中文编辑终稿校验，终稿正文直接返回，不依赖 Obsidian、其他发布系统或 [`collect-ai-trends`](ai/collect-ai-trends) 的文件。原聚合 Skill 继续保留，用于确实需要一次运行合并多渠道信号的场景。
+
 ## 创建 Skill
 
 1. 复制 [`category-name/example-skill`](category-name/example-skill) 作为起点。
