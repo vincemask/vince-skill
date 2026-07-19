@@ -54,7 +54,7 @@ class CollectorIntegrationTests(unittest.TestCase):
                 "raw/reddit.json", "raw/x.json", "raw/github.json",
             ):
                 self.assertTrue((run_dir / relative).is_file(), relative)
-            for relative in ("report.md", "drafts.json", "x-drafts.md", "obsidian-note.md", "obsidian-publish.json"):
+            for relative in ("report.md", "drafts.json", "x-drafts.md"):
                 self.assertFalse((run_dir / relative).exists(), relative)
             self.assertTrue((output / "latest-collection.json").is_file())
             report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
@@ -128,23 +128,6 @@ class CollectorIntegrationTests(unittest.TestCase):
             failure_markers=("[FAIL]",),
         )
         self.assertEqual(check["status"], "failed")
-
-    def test_obsidian_path_overrides_reject_unsafe_paths(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            for value in ("../raw", "/absolute/raw", "raw/../other"):
-                with self.subTest(value=value):
-                    result = subprocess.run(
-                        [
-                            sys.executable, str(COLLECTOR), "--config", str(CONFIG),
-                            "--fixture-dir", str(FIXTURES), "--output-dir", temp,
-                            "--run-id", "20260715T000000Z-test", "--obsidian-dir", value,
-                        ],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                    self.assertEqual(result.returncode, 2)
-                    self.assertIn("config.obsidian.target_directory", result.stderr)
 
     def test_title_similarity_recognizes_containment(self) -> None:
         collector = load_collector_module()

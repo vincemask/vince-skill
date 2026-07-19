@@ -1,11 +1,11 @@
 ---
 name: collect-x-ai-trends
-description: 通过 opencli 独立采集 X 平台重点账号和主题查询中的最新 AI、coding agent 与 AI coding 信号，生成最多 10 条中文 X 长帖与推荐理由，并通过 Obsidian CLI 归档。适用于 X 平台 AI 趋势监控、账号观察、每日或每周选题和中文 X 内容策划；不采集 Reddit 或 GitHub。
+description: 通过 opencli 独立采集 X 平台重点账号和主题查询中的最新 AI、coding agent 与 AI coding 信号，生成并直接输出最多 10 条中文 X 长帖与推荐理由。适用于 X 平台 AI 趋势监控、账号观察、每日或每周选题和中文 X 内容策划；不采集 Reddit 或 GitHub，不依赖 Obsidian。
 ---
 
-# X AI 趋势采集与成稿
+# X AI 趋势采集与正文输出
 
-执行“X 采集 → 编辑 → 终稿 → Obsidian 发布”。将本文件所在目录解析为 `<skill-dir>`，始终使用脚本绝对路径。
+执行“X 采集 → 编辑 → 终稿输出”。将本文件所在目录解析为 `<skill-dir>`，始终使用脚本绝对路径。
 
 ## 1. 采集 X 证据
 
@@ -48,23 +48,18 @@ python3 <skill-dir>/scripts/collect_x_ai_trends.py \
 
 只陈述 X evidence 支持的事实。解释事件、受影响对象和发布价值；每条只保留一个主来源 URL，并放在最后一行。最多使用一个 hashtag 和一个 emoji，不使用 Markdown，不把单渠道信号称为跨来源印证。
 
-## 3. 终稿与归档
+## 3. 终稿与直接输出
 
 ```bash
 python3 <skill-dir>/scripts/finalize_ai_trends.py \
   --run-dir /absolute/path/to/<run-dir>
-
-python3 <skill-dir>/scripts/publish_obsidian.py \
-  /absolute/path/to/<run-dir>/obsidian-publish.json
 ```
 
-终稿器验证数量、顺序、中文比例、长度、URL 和重复内容。发布器返回 0 且结果为 `published` 才算成功。只通过 Obsidian CLI 操作 Vault；超时且应用未运行时，启动 Obsidian、用 `obsidian version` 确认可用后重试同一命令。
-
-需要核对完整文件契约时读取 `references/output-contract.md`。已发布运行不得重新终稿化。
+终稿器验证数量、顺序、中文比例、长度、URL 和重复内容。读取命令标准输出中的 `content` 字段并直接返回，禁止调用外部发布或归档系统。需要核对完整文件契约时读取 `references/output-contract.md`。
 
 ## 用户返回
 
-返回全部 N 个话题，每条包含中文标题、推荐理由和可复制的 X 成稿；结尾仅附 Obsidian wikilink、健康状态和“本次共 N 个可靠话题”。`partial` 或 `failed` 只显示一条数据不完整警告。
+直接返回全部 N 个话题正文，每条包含中文标题、推荐理由和可复制的 X 成稿；结尾仅附健康状态和“本次共 N 个可靠话题”。`partial` 或 `failed` 只显示一条数据不完整警告。
 
 不要自动发布、点赞、转发或回复 X 内容。
 
@@ -75,4 +70,4 @@ PYTHONPYCACHEPREFIX=/tmp/collect-x-ai-trends-pycache \
 python3 -m unittest discover -s <skill-dir>/scripts/tests -v
 ```
 
-修改后同时运行 Skill 结构校验；真实写入前完成 opencli 与 Obsidian CLI 预检。
+修改后同时运行 Skill 结构校验；真实采集前只需完成 opencli 预检。

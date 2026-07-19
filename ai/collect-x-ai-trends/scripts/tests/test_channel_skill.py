@@ -83,6 +83,9 @@ class XChannelSkillTests(unittest.TestCase):
             write_valid_editorial(run_dir)
             finalized = subprocess.run([sys.executable, str(FINALIZER), "--run-dir", str(run_dir)], capture_output=True, text=True, check=False)
             self.assertEqual(finalized.returncode, 0, finalized.stderr)
+            final_payload = json.loads(finalized.stdout)
+            self.assertEqual(final_payload["content"], (run_dir / "report.md").read_text(encoding="utf-8"))
+            self.assertFalse((run_dir / "obsidian-publish.json").exists())
             manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual({path for path in manifest["files"] if path.startswith("raw/")}, {"raw/x.json"})
 

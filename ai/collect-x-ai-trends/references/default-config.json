@@ -48,13 +48,5 @@
     "min_recommendation_characters": 20,
     "max_recommendation_characters": 50,
     "max_hashtags": 1
-  },
-  "obsidian": {
-    "enabled": true,
-    "vault": "wiki",
-    "target_directory": "raw",
-    "strict": true,
-    "index_path": "index.md",
-    "log_path": "log.md"
   }
 }

@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
-"""Validate Codex editorial copy and render compact AI trend publishing artifacts."""
+"""Validate Codex editorial copy and render direct-response AI trend content."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
 import unicodedata
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from collect_reddit_ai_trends import (
     SCHEMA_VERSION,
     STATUS_ZH,
     atomic_write,
     validate_config,
-    validate_relative_vault_path,
-    validate_vault_name,
     write_json,
-    yaml_quote,
 )
 from validate_x_drafts import validate as validate_drafts
 
@@ -236,118 +230,12 @@ def render_compact_report(report: dict[str, Any], drafts: dict[str, Any]) -> str
     return "\n".join(lines)
 
 
-def parse_local_time(report: dict[str, Any], config: dict[str, Any]) -> datetime:
-    value = str(report["run"]["generated_at"]).replace("Z", "+00:00")
-    return datetime.fromisoformat(value).astimezone(ZoneInfo(str(config["timezone"])))
-
-
-def render_obsidian_note(
-    report: dict[str, Any],
-    drafts: dict[str, Any],
-    local_time: datetime,
-    compact_report: str,
-) -> str:
-    title = f"AI 热点与 X 成稿 {local_time.strftime('%Y-%m-%d %H:%M')}"
-    sources = list(dict.fromkeys(draft["primary_url"] for draft in drafts["drafts"]))
-    lines = [
-        "---",
-        f"title: {yaml_quote(title)}",
-        f"created: {local_time.date().isoformat()}",
-        f"updated: {local_time.date().isoformat()}",
-        "type: summary",
-        "tags:",
-        "  - ai",
-        "  - monitoring",
-        "  - news",
-        "  - x",
-        "  - github",
-    ]
-    if sources:
-        lines.append("sources:")
-        lines.extend(f"  - {yaml_quote(url)}" for url in sources)
-    else:
-        lines.append("sources: []")
-    lines.extend([
-        f"run_id: {yaml_quote(report['run']['id'])}",
-        f"health: {report['health']['status']}",
-        f"window_start: {yaml_quote(report['run']['window_start'])}",
-        f"window_end: {yaml_quote(report['run']['window_end'])}",
-        f"signal_count: {report['health']['item_count']}",
-        f"topic_count: {len(drafts['drafts'])}",
-        f"draft_count: {len(drafts['drafts'])}",
-        "post_mode: long",
-        "---",
-        "",
-        "[[concepts/news-monitoring-and-growth]]",
-        "",
-        compact_report.rstrip(),
-        "",
-    ])
-    return "\n".join(lines)
-
-
-def build_publish_plan(
-    report: dict[str, Any],
-    drafts: dict[str, Any],
-    config: dict[str, Any],
-    run_dir: Path,
-    note: str,
-    local_time: datetime,
-) -> dict[str, Any]:
-    obsidian = config["obsidian"]
-    target_directory = validate_relative_vault_path(
-        obsidian["target_directory"], "config.obsidian.target_directory", directory=True
-    )
-    filename = f"trend-{local_time.strftime('%Y-%m-%d-%H%M%S')}.md"
-    note_path = f"{target_directory}/{filename}"
-    wikilink = f"[[{note_path.removesuffix('.md')}]]"
-    run_id = report["run"]["id"]
-    topic_count = len(drafts["drafts"])
-    log_marker = f"ai-trend-run:{run_id}"
-    index_entry = f"- {wikilink} — AI 趋势采集：{topic_count} 个推荐话题与 {topic_count} 条 X 成稿。"
-    log_entry = (
-        f"- {local_time.strftime('%Y-%m-%d %H:%M:%S')} | run_id={run_id} | path={wikilink} | "
-        f"signals={report['health']['item_count']} | topics={topic_count} | drafts={topic_count} | "
-        f"status=published <!-- {log_marker} -->"
-    )
-    markers = [
-        f"run_id: {yaml_quote(run_id)}",
-        "[[concepts/news-monitoring-and-growth]]",
-        "# AI 热点与 X 成稿",
-    ]
-    if topic_count:
-        markers.extend(["**推荐理由：**", "**X 成稿：**"])
-    return {
-        "schema_version": 1,
-        "run_id": run_id,
-        "vault": validate_vault_name(obsidian["vault"]),
-        "target_directory": target_directory,
-        "note_path": note_path,
-        "note_wikilink": wikilink,
-        "note_file": str((run_dir / "obsidian-note.md").resolve()),
-        "note_sha256": hashlib.sha256(note.encode("utf-8")).hexdigest(),
-        "index_path": validate_relative_vault_path(obsidian["index_path"], "config.obsidian.index_path"),
-        "log_path": validate_relative_vault_path(obsidian["log_path"], "config.obsidian.log_path"),
-        "strict": bool(obsidian["strict"]),
-        "created_date": local_time.date().isoformat(),
-        "signal_count": int(report["health"]["item_count"]),
-        "topic_count": topic_count,
-        "draft_count": topic_count,
-        "index_entry": index_entry,
-        "log_entry": log_entry,
-        "log_marker": log_marker,
-        "required_note_markers": markers,
-        "result_file": str((run_dir / "obsidian-publish-result.json").resolve()),
-    }
-
-
 def copy_latest(
     output_root: Path,
     run_dir: Path,
     report: dict[str, Any],
     drafts: dict[str, Any],
     editorial: dict[str, Any],
-    plan: dict[str, Any],
 ) -> None:
     mapping = {
         "latest-report.json": json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -355,8 +243,6 @@ def copy_latest(
         "latest-editorial.json": json.dumps(editorial, ensure_ascii=False, indent=2) + "\n",
         "latest-drafts.json": json.dumps(drafts, ensure_ascii=False, indent=2) + "\n",
         "latest-x-drafts.md": (run_dir / "x-drafts.md").read_text(encoding="utf-8"),
-        "latest-obsidian-note.md": (run_dir / "obsidian-note.md").read_text(encoding="utf-8"),
-        "latest-obsidian-publish.json": json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
     }
     for name, content in mapping.items():
         atomic_write(output_root / name, content)
@@ -367,11 +253,7 @@ def copy_latest(
         "generated_at": report["run"]["generated_at"],
         "health": report["health"],
         "topic_count": len(drafts["drafts"]),
-        "obsidian": {
-            "vault": plan["vault"],
-            "note_path": plan["note_path"],
-            "publish_plan": str((run_dir / "obsidian-publish.json").resolve()),
-        },
+        "content": (run_dir / "report.md").read_text(encoding="utf-8"),
     })
 
 
@@ -379,11 +261,6 @@ def finalize(run_dir: Path, editorial_path: Path) -> dict[str, Any]:
     run_dir = run_dir.resolve()
     if not run_dir.is_dir():
         raise FinalizeError(f"运行目录不存在：{run_dir}")
-    published_result = run_dir / "obsidian-publish-result.json"
-    if published_result.is_file():
-        result = load_json(published_result)
-        if isinstance(result, dict) and result.get("status") == "published":
-            raise FinalizeError("该运行已经发布成功，禁止重新生成终稿")
     report = load_json(run_dir / "report.json")
     editorial_input = load_json(run_dir / "editorial-input.json")
     config = load_json(run_dir / "run-config.json")
@@ -400,9 +277,6 @@ def finalize(run_dir: Path, editorial_path: Path) -> dict[str, Any]:
     }
     drafts = build_drafts_payload(items, editorial_input)
     compact_report = render_compact_report(report, drafts)
-    local_time = parse_local_time(report, config)
-    note = render_obsidian_note(report, drafts, local_time, compact_report)
-    plan = build_publish_plan(report, drafts, config, run_dir, note, local_time)
     manifest = load_json(run_dir / "manifest.json")
     raw_files = [f"raw/{source}.json" for source in report.get("items", {})]
     manifest.update({
@@ -410,25 +284,21 @@ def finalize(run_dir: Path, editorial_path: Path) -> dict[str, Any]:
         "topic_count": len(drafts["drafts"]),
         "files": [
             "report.json", "report.md", "editorial-input.json", "editorial.json",
-            "drafts.json", "x-drafts.md", "obsidian-note.md", "obsidian-publish.json",
-            "run-config.json",
+            "drafts.json", "x-drafts.md", "run-config.json",
         ] + raw_files,
     })
     write_json(run_dir / "editorial.json", normalized_editorial)
     write_json(run_dir / "drafts.json", drafts)
     atomic_write(run_dir / "report.md", compact_report)
     atomic_write(run_dir / "x-drafts.md", compact_report)
-    atomic_write(run_dir / "obsidian-note.md", note)
-    write_json(run_dir / "obsidian-publish.json", plan)
     write_json(run_dir / "manifest.json", manifest)
     write_json(run_dir / "finalized.json", {
         "schema_version": 1,
         "run_id": report["run"]["id"],
         "status": "finalized",
         "topic_count": len(drafts["drafts"]),
-        "note_sha256": plan["note_sha256"],
     })
-    copy_latest(run_dir.parent, run_dir, report, drafts, normalized_editorial, plan)
+    copy_latest(run_dir.parent, run_dir, report, drafts, normalized_editorial)
     return {
         "run_id": report["run"]["id"],
         "status": "finalized",
@@ -436,9 +306,7 @@ def finalize(run_dir: Path, editorial_path: Path) -> dict[str, Any]:
         "topic_count": len(drafts["drafts"]),
         "report": str((run_dir / "report.md").resolve()),
         "drafts": str((run_dir / "x-drafts.md").resolve()),
-        "obsidian_note": str((run_dir / "obsidian-note.md").resolve()),
-        "obsidian_publish_plan": str((run_dir / "obsidian-publish.json").resolve()),
-        "obsidian_target": f"{plan['vault']}:{plan['note_path']}",
+        "content": compact_report,
     }
 
 

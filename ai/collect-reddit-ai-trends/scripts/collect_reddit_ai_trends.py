@@ -31,7 +31,6 @@ TOKEN_RE = re.compile(
 )
 WORD_RE = re.compile(r"[a-z0-9][a-z0-9+#.-]{1,}", re.IGNORECASE)
 RUN_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z(?:-[a-z0-9-]+)?$")
-VAULT_NAME_RE = re.compile(r"^[^/\\]+$")
 STOP_WORDS = {
     "about", "after", "again", "also", "and", "are", "but", "for", "from", "has", "have",
     "into", "its", "new", "not", "now", "our", "the", "their", "this", "that", "with", "your",
@@ -92,29 +91,6 @@ def default_config_path() -> Path:
     return Path(__file__).resolve().parent.parent / "references" / "default-config.json"
 
 
-def validate_relative_vault_path(value: Any, field: str, *, directory: bool = False) -> str:
-    text = str(value or "").strip().replace("\\", "/")
-    path = Path(text)
-    if (
-        not text
-        or text in (".", "..")
-        or path.is_absolute()
-        or "//" in text
-        or any(part in (".", "..") for part in path.parts)
-    ):
-        raise ValueError(f"{field} must be a relative Vault path without '.' or '..'")
-    if directory and text.endswith("/"):
-        text = text.rstrip("/")
-    return text
-
-
-def validate_vault_name(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text or text in (".", "..") or not VAULT_NAME_RE.fullmatch(text):
-        raise ValueError("config.obsidian.vault must be a Vault name, not a path")
-    return text
-
-
 def validate_config(config: dict[str, Any]) -> None:
     if config.get("schema_version") != 1:
         raise ValueError("config.schema_version must be 1")
@@ -160,17 +136,6 @@ def validate_config(config: dict[str, Any]) -> None:
         ZoneInfo(str(config.get("timezone", "Asia/Shanghai")))
     except ZoneInfoNotFoundError as exc:
         raise ValueError("config.timezone must name an installed IANA timezone") from exc
-    obsidian = config.get("obsidian")
-    if not isinstance(obsidian, dict):
-        raise ValueError("config.obsidian must be an object")
-    if obsidian.get("enabled") is not True:
-        raise ValueError("config.obsidian.enabled must be true because publishing is mandatory")
-    if obsidian.get("strict") is not True:
-        raise ValueError("config.obsidian.strict must be true because publishing failures are fatal")
-    validate_vault_name(obsidian.get("vault"))
-    validate_relative_vault_path(obsidian.get("target_directory"), "config.obsidian.target_directory", directory=True)
-    validate_relative_vault_path(obsidian.get("index_path"), "config.obsidian.index_path")
-    validate_relative_vault_path(obsidian.get("log_path"), "config.obsidian.log_path")
 
 
 def extract_rows(payload: Any) -> list[dict[str, Any]]:
@@ -741,10 +706,6 @@ def build_editorial_input(
     }
 
 
-def yaml_quote(value: Any) -> str:
-    return json.dumps(str(value), ensure_ascii=False)
-
-
 def command_check(
     command: list[str],
     timeout: int = 20,
@@ -781,8 +742,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", help="Deterministic run id in YYYYMMDDTHHMMSSZ[-suffix] form")
     parser.add_argument("--no-cache", action="store_true", help="Disable cache reads and writes")
     parser.add_argument("--strict", action="store_true", help="Return nonzero unless health is complete")
-    parser.add_argument("--obsidian-vault", help="Override config.obsidian.vault with a Vault name")
-    parser.add_argument("--obsidian-dir", help="Override config.obsidian.target_directory with a relative path")
     parser.add_argument("--preflight", action="store_true", help="Check the opencli bridge, then exit")
     return parser
 
@@ -793,10 +752,6 @@ def main() -> int:
         return run_preflight()
     try:
         config = load_json(args.config.resolve())
-        if args.obsidian_vault:
-            config.setdefault("obsidian", {})["vault"] = args.obsidian_vault
-        if args.obsidian_dir:
-            config.setdefault("obsidian", {})["target_directory"] = args.obsidian_dir
         validate_config(config)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"configuration error: {safe_error(str(exc))}", file=sys.stderr)

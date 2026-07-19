@@ -1,7 +1,7 @@
 interface:
   display_name: "AI 趋势采集工作流"
-  short_description: "筛选 10 个 AI 热点，撰写中文 X 成稿并归档 Obsidian"
-  default_prompt: "使用 $collect-ai-trends 采集最新 AI 信号，基于证据写出最多 10 条中文 X 长帖与推荐理由，并通过 Obsidian CLI 完成归档验证。"
+  short_description: "筛选 10 个 AI 热点并直接输出中文 X 长帖成稿"
+  default_prompt: "使用 $collect-ai-trends 采集最新 AI 信号，基于证据写出最多 10 条中文 X 长帖与推荐理由，并直接返回完整正文。"
 
 policy:
   allow_implicit_invocation: true
