@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python3 -m pip install -r requirements-dev.txt
+      - name: Validate Skill packages
+        run: python3 tooling/validate_repo.py
+      - name: Check generated scripts
+        run: python3 tooling/generate_skills.py --check
+      - name: Test repository tooling
+        run: python3 -m unittest discover -s tooling/tests -v
+      - name: Test every AI trend Skill
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_dir in ai/*/scripts/tests; do
+            PYTHONPYCACHEPREFIX=/tmp/vince-skill-pycache \
+              python3 -m unittest discover -s "$test_dir" -v
+          done
